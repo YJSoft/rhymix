@@ -1,5 +1,15 @@
 RewriteEngine On
 
+# reserved SWFtoMP3 rules
+# so, player,download,mp3,play cannot used as mid.
+RewriteRule ^player/([0-9]+)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=false&id=$1 [L]
+RewriteRule ^download/([0-9]+)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=true&id=$1 [L]
+RewriteRule ^mp3/([0-9]+)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=mp3&id=$1 [L]
+RewriteRule ^play/([0-9]+)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=play&id=$1 [L]
+
+RewriteRule ^(files[a-zA-Z0-9_/]+\.swf)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=false&src=$1 [L]
+RewriteRule ^download/(files[a-zA-Z0-9_/]+\.swf)$ ./index.php?module=swftomp3&act=dispswftomp3bgmaddress&download=true&src=$1 [L]
+
 # reserve Rhymix Layout Template Source File (*.html)
 RewriteRule ^(layouts|m.layouts)/(.+)\.html$ - [L,F]
 # reserve Rhymix Template Source Files (*.html)

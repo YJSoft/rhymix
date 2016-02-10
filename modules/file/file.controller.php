@@ -173,6 +173,7 @@ class fileController extends file
 
 		$file_srl = Context::get('file_srl');
 		$sid = Context::get('sid');
+		$file_type = Context::get('file_type');
 		$logged_info = Context::get('logged_info');
 		// Get file information from the DB
 		$columnList = array('file_srl', 'sid', 'isvalid', 'source_filename', 'module_srl', 'uploaded_filename', 'file_size', 'member_srl', 'upload_target_srl', 'upload_target_type');
@@ -290,7 +291,7 @@ class fileController extends file
 		}
 		$file_key_data = $file_obj->file_srl . $file_obj->file_size . $file_obj->uploaded_filename . $_SERVER['REMOTE_ADDR'] . $_SERVER['HTTP_USER_AGENT'];
 		$file_key = substr(hash_hmac('sha256', $file_key_data, $_SESSION['__XE_FILE_KEY__']), 0, 32);
-		header('Location: '.getNotEncodedUrl('', 'act', 'procFileOutput','file_srl',$file_srl,'file_key',$file_key));
+		header('Location: '.getNotEncodedUrl('', 'act', 'procFileOutput','file_srl',$file_srl,'file_key',$file_key,'file_type',$file_type));
 		Context::close();
 		exit();
 	}
@@ -301,6 +302,7 @@ class fileController extends file
 		$oFileModel = getModel('file');
 		$file_srl = Context::get('file_srl');
 		$file_key = Context::get('file_key');
+		$file_type = Context::get('file_type');
 
 		$columnList = array('source_filename', 'uploaded_filename', 'file_size');
 		$file_obj = $oFileModel->getFile($file_srl, $columnList);
@@ -321,7 +323,22 @@ class fileController extends file
 		}
 		
 		// Check if file exists
-		$uploaded_filename = $file_obj->uploaded_filename;
+		$file_id = (int) str_replace("/player/","",$file_obj->uploaded_filename);
+
+		$cond = new stdClass();
+		$cond->idx = $file_id;
+		$output_swf = executeQuery('swftomp3.getswftomp3swffromid', $cond);
+		if(isset($output_swf->data->swf)) $output_swf = $output_swf->data->swf;
+		else $output_swf = $file_obj->uploaded_filename;
+
+		$output_mp3 = executeQuery('swftomp3.getswftomp3mp3fromid', $cond);
+		if(isset($output_mp3->data->mp3)) $output_mp3 = $output_mp3->data->mp3;
+		else $output_mp3 = $file_obj->uploaded_filename;
+
+		if($file_type=='swf') $uploaded_filename = $output_swf;
+		elseif($file_type=='mp3') $uploaded_filename = $output_mp3;
+		else $uploaded_filename = $output_swf;
+		
 		if(!file_exists($uploaded_filename))
 		{
 			return $this->stop('msg_file_not_found');
