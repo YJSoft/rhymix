@@ -319,5 +319,3 @@ $lang->about_privacy = '개인정보 취급방침이 없을 경우 표시되지 
 $lang->accept_privacy = '개인정보 취급방침 동의';
 $lang->about_accept_privacy = '개인정보 취급방침을 모두 읽었으며 동의합니다.';
 $lang->msg_accept_privacy = '개인정보 취급방침에 동의해야 합니다.';
-$lang->cmd_agreement = '이용 약관 설정';
-$lang->cmd_privacy = '개인정보 취급방침 설정';
