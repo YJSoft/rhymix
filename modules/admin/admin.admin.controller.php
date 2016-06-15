@@ -546,7 +546,7 @@ class adminAdminController extends admin
 		// Favicon and mobicon
 		$this->_saveFavicon('favicon.ico', $vars->is_delete_favicon);
 		$this->_saveFavicon('mobicon.png', $vars->is_delete_mobicon);
-		$this->_saveDefaultImage($vars->is_delete_site_default_image);
+		$this->_saveDefaultImage($vars->is_delete_default_image);
 		
 		// Save
 		Rhymix\Framework\Config::save();
@@ -675,6 +675,10 @@ class adminAdminController extends admin
 			if ($vars->object_cache_type === 'memcached' || $vars->object_cache_type === 'redis')
 			{
 				$cache_servers = array($vars->object_cache_type . '://' . $vars->object_cache_host . ':' . intval($vars->object_cache_port));
+				if ($vars->object_cache_type === 'redis')
+				{
+					$cache_servers[0] .= '/' . intval($vars->object_cache_dbnum);
+				}
 			}
 			else
 			{
@@ -730,6 +734,7 @@ class adminAdminController extends admin
 		Rhymix\Framework\Config::set('debug.log_slow_queries', max(0, floatval($vars->debug_log_slow_queries)));
 		Rhymix\Framework\Config::set('debug.log_slow_triggers', max(0, floatval($vars->debug_log_slow_triggers)));
 		Rhymix\Framework\Config::set('debug.log_slow_widgets', max(0, floatval($vars->debug_log_slow_widgets)));
+		Rhymix\Framework\Config::set('debug.log_slow_remote_requests', max(0, floatval($vars->debug_log_slow_remote_requests)));
 		Rhymix\Framework\Config::set('debug.display_type', strval($vars->debug_display_type) ?: 'comment');
 		Rhymix\Framework\Config::set('debug.display_to', strval($vars->debug_display_to) ?: 'admin');
 		

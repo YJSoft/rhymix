@@ -1261,19 +1261,19 @@ class ModuleHandler extends Handler
 			$type = $item->type;
 			$called_method = $item->called_method;
 
-			// do not call if module is blacklisted
-			if (Context::isBlacklistedPlugin($module))
-			{
-				continue;
-			}
-
 			// todo why don't we call a normal class object ?
 			$oModule = getModule($module, $type);
 			if(!$oModule || !method_exists($oModule, $called_method))
 			{
 				continue;
 			}
-
+			
+			// do not call if module is blacklisted
+			if (Context::isBlacklistedPlugin($oModule->module))
+			{
+				continue;
+			}
+			
 			$before_each_trigger_time = microtime(true);
 			$output = $oModule->{$called_method}($obj);
 			$after_each_trigger_time = microtime(true);
@@ -1301,7 +1301,7 @@ class ModuleHandler extends Handler
 		foreach($trigger_functions as $item)
 		{
 			$before_each_trigger_time = microtime(true);
-			$item($obj);
+			$output = $item($obj);
 			$after_each_trigger_time = microtime(true);
 
 			if ($trigger_name !== 'common.writeSlowlog')

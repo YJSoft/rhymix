@@ -515,11 +515,14 @@ class adminAdminView extends admin
 		{
 			Context::set('object_cache_host', parse_url(array_first($cache_servers), PHP_URL_HOST) ?: null);
 			Context::set('object_cache_port', parse_url(array_first($cache_servers), PHP_URL_PORT) ?: null);
+			$cache_dbnum = preg_replace('/[^\d]/', '', parse_url(array_first($cache_servers), PHP_URL_PATH));
+			Context::set('object_cache_dbnum', $cache_dbnum === '' ? 1 : intval($cache_dbnum));
 		}
 		else
 		{
 			Context::set('object_cache_host', null);
 			Context::set('object_cache_port', null);
+			Context::set('object_cache_dbnum', 1);
 		}
 		
 		// Thumbnail settings
@@ -551,6 +554,7 @@ class adminAdminView extends admin
 		Context::set('debug_log_slow_queries', Rhymix\Framework\Config::get('debug.log_slow_queries'));
 		Context::set('debug_log_slow_triggers', Rhymix\Framework\Config::get('debug.log_slow_triggers'));
 		Context::set('debug_log_slow_widgets', Rhymix\Framework\Config::get('debug.log_slow_widgets'));
+		Context::set('debug_log_slow_remote_requests', Rhymix\Framework\Config::get('debug.log_slow_remote_requests'));
 		Context::set('debug_log_filename', Rhymix\Framework\Config::get('debug.log_filename') ?: 'files/debug/YYYYMMDD.php');
 		Context::set('debug_display_type', Rhymix\Framework\Config::get('debug.display_type'));
 		Context::set('debug_display_content', Rhymix\Framework\Config::get('debug.display_content'));

@@ -19,6 +19,8 @@ class Debug
 	protected static $_slow_triggers = array();
 	protected static $_widgets = array();
 	protected static $_slow_widgets = array();
+	protected static $_remote_requests = array();
+	protected static $_slow_remote_requests = array();
 	
 	/**
 	 * Also write to error log.
@@ -106,6 +108,26 @@ class Debug
 	}
 	
 	/**
+	 * Get all remote requests.
+	 * 
+	 * @return array
+	 */
+	public static function getRemoteRequests()
+	{
+		return self::$_remote_requests;
+	}
+	
+	/**
+	 * Get all slow remote requests.
+	 * 
+	 * @return array
+	 */
+	public static function getSlowRemoteRequests()
+	{
+		return self::$_slow_remote_requests;
+	}
+	
+	/**
 	 * Add a filename alias.
 	 * 
 	 * @param string $display_filename
@@ -126,8 +148,7 @@ class Debug
 	public static function addEntry($message)
 	{
 		// Get the backtrace.
-		$backtrace_args = defined('\DEBUG_BACKTRACE_IGNORE_ARGS') ? \DEBUG_BACKTRACE_IGNORE_ARGS : 0;
-		$backtrace = debug_backtrace($backtrace_args);
+		$backtrace = debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS);
 		if (count($backtrace) > 1 && $backtrace[1]['function'] === 'debugPrint' && !$backtrace[1]['class'])
 		{
 			array_shift($backtrace);
@@ -181,8 +202,7 @@ class Debug
 		), $errstr);
 		
 		// Get the backtrace.
-		$backtrace_args = defined('\DEBUG_BACKTRACE_IGNORE_ARGS') ? \DEBUG_BACKTRACE_IGNORE_ARGS : 0;
-		$backtrace = debug_backtrace($backtrace_args);
+		$backtrace = debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS);
 		
 		// Prepare the error entry.
 		self::$_errors[] = $errinfo = (object)array(
@@ -197,9 +217,8 @@ class Debug
 		// Add the entry to the error log.
 		if (self::$write_to_error_log)
 		{
-			$log_entry = str_replace("\0", '', sprintf('PHP %s: %s in %s on line %d',
-				$errinfo->type, $errstr, $errfile, intval($errline)));
-			error_log($log_entry);
+			$log_entry = strtr(sprintf('PHP %s: %s in %s on line %d', $errinfo->type, $errstr, $errfile, intval($errline)), "\0\r\n\t\v\e\f", '       ');
+			error_log($log_entry . \PHP_EOL . self::formatBacktrace($backtrace));
 		}
 	}
 	
@@ -285,6 +304,33 @@ class Debug
 	}
 	
 	/**
+	 * Add a remote request to the log.
+	 * 
+	 * @return bool
+	 */
+	public static function addRemoteRequest($request)
+	{
+		$request_object = (object)array(
+			'type' => 'Remote Request',
+			'time' => microtime(true),
+			'message' => null,
+			'url' => $request['url'],
+			'status' => $request['status'],
+			'file' => $request['called_file'],
+			'line' => $request['called_line'],
+			'method' => $request['called_method'],
+			'backtrace' => $request['backtrace'],
+			'elapsed_time' => $request['elapsed_time'],
+		);
+		
+		self::$_remote_requests[] = $request_object;
+		if ($request_object->elapsed_time && $request_object->elapsed_time >= config('debug.log_slow_remote_requests'))
+		{
+			self::$_slow_remote_requests[] = $request_object;
+		}
+	}
+	
+	/**
 	 * The default handler for catching exceptions.
 	 * 
 	 * @param Exception $e
@@ -325,7 +371,7 @@ class Debug
 			$log_entry = str_replace("\0", '', sprintf('%s #%d "%s" in %s on line %d',
 				get_class($e), $e->getCode(), $e->getMessage(), $errfile, $e->getLine()));
 		}
-		error_log('PHP Exception: ' . $log_entry . "\n" . str_replace("\0", '',  $e->getTraceAsString()));
+		error_log('PHP Exception: ' . $log_entry . \PHP_EOL . self::formatBacktrace($e->getTrace()));
 		
 		// Display the error screen.
 		self::displayErrorScreen($log_entry);
@@ -356,6 +402,25 @@ class Debug
 		
 		// Display the error screen.
 		self::displayErrorScreen($log_entry);
+	}
+	
+	/**
+	 * Format a backtrace for error logging.
+	 */
+	public static function formatBacktrace($backtrace)
+	{
+		$result = array();
+		foreach ($backtrace as $step)
+		{
+			$stepstr = '#' . count($result) . ' ';
+			$stepstr .= $step['file'] . '(' . $step['line'] . ')';
+			if ($step['function'])
+			{
+				$stepstr .= ': ' . ($step['type'] ? ($step['class'] . $step['type'] . $step['function']) : $step['function']) . '()';
+			}
+			$result[] = strtr($stepstr, "\0\r\n\t\v\e\f", '       ');
+		}
+		return implode(\PHP_EOL, $result);
 	}
 	
 	/**
@@ -504,6 +569,7 @@ class Debug
 				'db_class' => sprintf('%0.4f sec', $GLOBALS['__dbclass_elapsed_time__'] - $GLOBALS['__db_elapsed_time__']),
 				'layout' => sprintf('%0.4f sec', $GLOBALS['__layout_compile_elapsed__']),
 				'widget' => sprintf('%0.4f sec', $GLOBALS['__widget_excute_elapsed__']),
+				'remote' => sprintf('%0.4f sec', $GLOBALS['__remote_request_elapsed__']),
 				'trans' => sprintf('%0.4f sec', $GLOBALS['__trans_content_elapsed__']),
 			),
 			'entries' => self::$_entries,
@@ -512,10 +578,11 @@ class Debug
 			'slow_queries' => self::$_slow_queries,
 			'slow_triggers' => self::$_slow_triggers,
 			'slow_widgets' => self::$_slow_widgets,
+			'slow_remote_requests' => self::$_slow_remote_requests,
 		);
 		
 		// Clean up the backtrace.
-		foreach (array('entries', 'errors', 'queries', 'slow_queries') as $key)
+		foreach (array('entries', 'errors', 'queries', 'slow_queries', 'remote_requests', 'slow_remote_requests') as $key)
 		{
 			if (!$data->$key)
 			{
