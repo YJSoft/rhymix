@@ -81,9 +81,14 @@ class DBCubrid extends DB
 			define('__CUBRID_VERSION__', $cubrid_version);
 		}
 
-		if(__CUBRID_VERSION__ >= '8.4.0')
-			cubrid_set_autocommit($result, CUBRID_AUTOCOMMIT_TRUE);
-
+		if(version_compare(__CUBRID_VERSION__, '9.0', '<'))
+		{
+			$this->setError(-1, 'Rhymix requires CUBRID 9.0 or later. Current CUBRID version is ' . __CUBRID_VERSION__);
+			return;
+		}
+		
+		cubrid_set_autocommit($result, CUBRID_AUTOCOMMIT_TRUE);
+		
 		return $result;
 	}
 
@@ -107,12 +112,6 @@ class DBCubrid extends DB
 	 */
 	function addQuotes($string)
 	{
-		if(version_compare(PHP_VERSION, "5.4.0", "<") &&
-				get_magic_quotes_gpc())
-		{
-			$string = stripslashes(str_replace("\\", "\\\\", $string));
-		}
-
 		if(!is_numeric($string))
 		{
 			/*
@@ -977,8 +976,6 @@ class DBCubrid extends DB
 			return;
 		}
 
-		$query .= (__DEBUG_QUERY__ & 1 && $this->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
-
 		$result = $this->_query($query);
 		if($result && !$this->transaction_started)
 		{
@@ -1007,8 +1004,6 @@ class DBCubrid extends DB
 			unset($this->param);
 			return;
 		}
-
-		$query .= (__DEBUG_QUERY__ & 1 && $this->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 
 		$result = $this->_query($query);
 
@@ -1039,8 +1034,6 @@ class DBCubrid extends DB
 			unset($this->param);
 			return;
 		}
-
-		$query .= (__DEBUG_QUERY__ & 1 && $this->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 
 		$result = $this->_query($query);
 
@@ -1083,7 +1076,6 @@ class DBCubrid extends DB
 				return;
 			}
 
-			$query .= (__DEBUG_QUERY__ & 1 && $this->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 			$result = $this->_query($query, $connection);
 
 			if($this->isError())
@@ -1153,7 +1145,6 @@ class DBCubrid extends DB
 			$count_query = sprintf('select count(*) as "count" from (%s) xet', $count_query);
 		}
 
-		$count_query .= (__DEBUG_QUERY__ & 1 && $queryObject->queryID) ? sprintf(' ' . $this->comment_syntax, $queryObject->queryID) : '';
 		$result = $this->_query($count_query, $connection);
 		$count_output = $this->_fetch($result);
 		$total_count = (int) (isset($count_output->count) ? $count_output->count : NULL);
@@ -1201,7 +1192,6 @@ class DBCubrid extends DB
 		$start_count = ($page - 1) * $list_count;
 
 		$query = $this->getSelectPageSql($queryObject, $with_values, $start_count, $list_count);
-		$query .= (__DEBUG_QUERY__ & 1 && $queryObject->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 		$result = $this->_query($query, $connection);
 		if($this->isError())
 		{

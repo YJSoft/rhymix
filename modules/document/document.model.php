@@ -370,18 +370,10 @@ class documentModel extends document
 	{
 		if(!isset($GLOBALS['XE_EXTRA_KEYS'][$module_srl]))
 		{
-			$keys = false;
-			$oCacheHandler = CacheHandler::getInstance('object', null, true);
-			if($oCacheHandler->isSupport())
-			{
-				$object_key = 'module_document_extra_keys:' . $module_srl;
-				$cache_key = $oCacheHandler->getGroupKey('site_and_module', $object_key);
-				$keys = $oCacheHandler->get($cache_key);
-			}
-
+			$keys = Rhymix\Framework\Cache::get("site_and_module:module_document_extra_keys:$module_srl");
 			$oExtraVar = ExtraVar::getInstance($module_srl);
 
-			if($keys === false)
+			if($keys === null)
 			{
 				$obj = new stdClass();
 				$obj->module_srl = $module_srl;
@@ -437,10 +429,7 @@ class documentModel extends document
 				$keys = $oExtraVar->getExtraVars();
 				if(!$keys) $keys = array();
 
-				if($oCacheHandler->isSupport())
-				{
-					$oCacheHandler->put($cache_key, $keys);
-				}
+				Rhymix\Framework\Cache::set("site_and_module:module_document_extra_keys:$module_srl", $keys, 0, true);
 			}
 
 
@@ -528,7 +517,7 @@ class documentModel extends document
 		ModuleHandler::triggerCall('document.getDocumentMenu', 'after', $menu_list);
 		if($this->grant->manager)
 		{
-			$str_confirm = Context::getLang('confirm_move');
+			$str_confirm = lang('confirm_move');
 			$url = sprintf("if(!confirm('%s')) return; var params = new Array(); params['document_srl']='%s'; params['mid']=current_mid;params['cur_url']=current_url; exec_xml('document', 'procDocumentAdminMoveToTrash', params)", $str_confirm, $document_srl);
 			$oDocumentController->addDocumentPopupMenu($url,'cmd_trash','','javascript');
 		}
@@ -554,7 +543,7 @@ class documentModel extends document
 		$menus_count = count($menus);
 		for($i=0;$i<$menus_count;$i++)
 		{
-			$menus[$i]->str = Context::getLang($menus[$i]->str);
+			$menus[$i]->str = lang($menus[$i]->str);
 		}
 		// Wanted to finally clean pop-up menu list
 		$this->add('menus', $menus);
@@ -621,7 +610,7 @@ class documentModel extends document
 
 		$this->_setSearchOption($opt, $args, $query_id, $use_division);
 
-		if($sort_check->isExtraVars)
+		if($sort_check->isExtraVars || !$opt->list_count)
 		{
 			return 1;
 		}
@@ -1547,6 +1536,44 @@ class documentModel extends document
 		if(!is_array($document_list)) $document_list = array($document_list);
 
 		return $document_list;	
+	}
+
+	function getDocumentUpdateLog($document_srl)
+	{
+		$args = new stdClass();
+		$args->document_srl = $document_srl;
+		$output = executeQueryArray('document.getDocumentUpdateLog', $args);
+
+		return $output;
+	}
+
+	function getUpdateLog($update_id)
+	{
+		$args = new stdClass();
+		$args->update_id = $update_id;
+		$output = exeCuteQuery('document.getUpdateLog', $args);
+		$updage_log = $output->data;
+
+		return $updage_log;
+	}
+
+	function getUpdateLogAdminisExists($document_srl = null)
+	{
+		if($document_srl == null)
+		{
+			return;
+		}
+		$args = new stdClass();
+		$args->document_srl = $document_srl;
+		$args->is_admin = 'Y';
+		$output = executeQuery('document.getUpdateLogAdminisExists', $args);
+
+		if($output->data->count > 0)
+		{
+			return true;
+		}
+
+		return false;
 	}
 }
 /* End of file document.model.php */

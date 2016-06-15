@@ -38,6 +38,7 @@ return array(
 	'locale' => array(
 		'default_lang' => 'ko',
 		'enabled_lang' => array('ko'),
+		'auto_select_lang' => false,
 		'default_timezone' => 'Asia/Seoul',
 		'internal_timezone' => 32400,
 	),
@@ -73,6 +74,7 @@ return array(
 	'view' => array(
 		'minify_scripts' => 'common',
 		'concat_scripts' => 'none',
+		'server_push' => false,
 		'use_gzip' => false,
 	),
 	'admin' => array(
@@ -87,20 +89,32 @@ return array(
 	),
 	'debug' => array(
 		'enabled' => true,
-		'log_errors' => true,
-		'log_queries' => false,
-		'log_slow_queries' => 1,
-		'log_slow_triggers' => 1,
-		'log_slow_widgets' => 1,
+		'log_slow_queries' => 0,
+		'log_slow_triggers' => 0,
+		'log_slow_widgets' => 0,
+		'log_filename' => null,
 		'display_type' => 'comment',
+		'display_content' => array(),
 		'display_to' => 'admin',
 		'allow' => array(),
 	),
-	'embedfilter' => array(
+	'seo' => array(
+		'main_title' => '',
+		'subpage_title' => '',
+		'document_title' => '',
+		'og_enabled' => false,
+		'og_extract_description' => false,
+		'og_extract_images' => false,
+		'og_use_timestamps' => false,
+	),
+	'mediafilter' => array(
 		'iframe' => array(),
 		'object' => array(),
 	),
-	'use_mobile_view' => true,
+	'mobile' => array(
+		'enabled' => true,
+		'tablets' => false,
+	),
 	'use_prepared_statements' => true,
 	'use_rewrite' => true,
 	'use_sso' => false,

@@ -46,45 +46,66 @@ class editorModel extends editor
 		if(!is_array($editor_config->enable_component_grant)) $editor_config->enable_component_grant = array();
 		if(!is_array($editor_config->enable_comment_component_grant)) $editor_config->enable_comment_component_grant= array();
 
-		if(!$editor_config->editor_height)
+		if($editor_config->default_editor_settings !== 'Y' && $editor_default_config->editor_skin && $editor_config->editor_skin && $editor_default_config->editor_skin !== $editor_config->editor_skin)
+		{
+			$editor_config->default_editor_settings = 'N';
+		}
+		if(!$editor_config->default_editor_settings)
+		{
+			$editor_config->default_editor_settings = 'Y';
+		}
+
+		if(!$editor_config->editor_height || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->editor_height = ($editor_default_config->editor_height) ? $editor_default_config->editor_height : 500;
 		}
-		if(!$editor_config->comment_editor_height)
+		if(!$editor_config->comment_editor_height || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->comment_editor_height = ($editor_default_config->comment_editor_height) ? $editor_default_config->comment_editor_height : 120;
 		}
-		if(!$editor_config->editor_skin)
+		if(!$editor_config->editor_skin || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->editor_skin = ($editor_default_config->editor_skin) ? $editor_default_config->editor_skin : 'ckeditor';
 		}
-		if(!$editor_config->comment_editor_skin)
+		if(!$editor_config->comment_editor_skin || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->comment_editor_skin = ($editor_default_config->comment_editor_skin) ? $editor_default_config->comment_editor_skin : 'ckeditor';
 		}
-		if(!$editor_config->content_style)
+		if(!$editor_config->content_style || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->content_style = ($editor_default_config->content_style) ? $editor_default_config->content_style : 'ckeditor_light';
 		}
-		if(!$editor_config->content_font && $editor_default_config->content_font)
+		if((!$editor_config->content_font && $editor_default_config->content_font) || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->content_font = $editor_default_config->content_font;
 		}
-		if(!$editor_config->content_font_size && $editor_default_config->content_font_size)
+		if((!$editor_config->content_font_size && $editor_default_config->content_font_size) || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->content_font_size = $editor_default_config->content_font_size;
 		}
-		if(!$editor_config->sel_editor_colorset && $editor_default_config->sel_editor_colorset)
+		if((!$editor_config->content_line_height && $editor_default_config->content_line_height) || $editor_config->default_editor_settings === 'Y')
+		{
+			$editor_config->content_line_height = $editor_default_config->content_line_height;
+		}
+		if((!$editor_config->content_paragraph_spacing && $editor_default_config->content_paragraph_spacing) || $editor_config->default_editor_settings === 'Y')
+		{
+			$editor_config->content_paragraph_spacing = $editor_default_config->content_paragraph_spacing;
+		}
+		if((!$editor_config->content_word_break && $editor_default_config->content_word_break) || $editor_config->default_editor_settings === 'Y')
+		{
+			$editor_config->content_word_break = $editor_default_config->content_word_break;
+		}
+		if((!$editor_config->sel_editor_colorset && $editor_default_config->sel_editor_colorset) || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->sel_editor_colorset = $editor_default_config->sel_editor_colorset;
 		}
-		if(!$editor_config->sel_comment_editor_colorset && $editor_default_config->sel_comment_editor_colorset)
+		if((!$editor_config->sel_comment_editor_colorset && $editor_default_config->sel_comment_editor_colorset) || $editor_config->default_editor_settings === 'Y')
 		{
 			$editor_config->sel_comment_editor_colorset = $editor_default_config->sel_comment_editor_colorset;
 		}
-		if(!$editor_config->comment_content_style && $editor_default_config->comment_content_style)
+		if(!$editor_config->comment_content_style || $editor_config->default_editor_settings === 'Y')
 		{
-			$editor_config->comment_content_style = $editor_default_config->comment_content_style;
+			$editor_config->comment_content_style = ($editor_default_config->comment_content_style) ? $editor_default_config->comment_content_style : 'ckeditor_light';
 		}
 
 		return $editor_config;
@@ -209,8 +230,11 @@ class editorModel extends editor
 		Context::set('content_style', $option->content_style);
 		Context::set('content_style_path', $this->module_path . 'styles/' . $option->content_style);
 		// Default font setting
-		Context::set('content_font', addslashes($option->content_font));
+		Context::set('content_font', $option->content_font);
 		Context::set('content_font_size', $option->content_font_size);
+		Context::set('content_line_height', $option->content_line_height);
+		Context::set('content_paragraph_spacing', $option->content_paragraph_spacing);
+		Context::set('content_word_break', $option->content_word_break);
 
 		// Option setting to allow auto-save
 		if(!$option->enable_autosave) $enable_autosave = false;
@@ -370,6 +394,9 @@ class editorModel extends editor
 			$config->content_style = $editor_config->content_style;
 			$config->content_font = $editor_config->content_font;
 			$config->content_font_size = $editor_config->content_font_size;
+			$config->content_line_height = $editor_config->content_line_height;
+			$config->content_paragraph_spacing = $editor_config->content_paragraph_spacing;
+			$config->content_word_break = $editor_config->content_word_break;
 			$config->sel_editor_colorset = $editor_config->sel_editor_colorset;
 			$config->upload_file_grant = $editor_config->upload_file_grant;
 			$config->enable_default_component_grant = $editor_config->enable_default_component_grant;
@@ -384,6 +411,9 @@ class editorModel extends editor
 			$config->content_style = $editor_config->comment_content_style;
 			$config->content_font = $editor_config->content_font;
 			$config->content_font_size = $editor_config->content_font_size;
+			$config->content_line_height = $editor_config->content_line_height;
+			$config->content_paragraph_spacing = $editor_config->content_paragraph_spacing;
+			$config->content_word_break = $editor_config->content_word_break;
 			$config->sel_editor_colorset = $editor_config->sel_comment_editor_colorset;
 			$config->upload_file_grant = $editor_config->comment_upload_file_grant;
 			$config->enable_default_component_grant = $editor_config->enable_comment_default_component_grant;
@@ -409,6 +439,9 @@ class editorModel extends editor
 		$option->content_style = $config->content_style;
 		$option->content_font = $config->content_font;
 		$option->content_font_size = $config->content_font_size;
+		$option->content_line_height = $config->content_line_height;
+		$option->content_paragraph_spacing = $config->content_paragraph_spacing;
+		$option->content_word_break = $config->content_word_break;
 		$option->colorset = $config->sel_editor_colorset;
 		// Permission check for file upload
 		$option->allow_fileupload = false;
@@ -547,11 +580,11 @@ class editorModel extends editor
 			// Create an object of the component and execute
 			$class_path = sprintf('%scomponents/%s/', $this->module_path, $component);
 			$class_file = sprintf('%s%s.class.php', $class_path, $component);
-			if(!file_exists($class_file)) return new Object(-1, sprintf(Context::getLang('msg_component_is_not_founded'), $component));
+			if(!file_exists($class_file)) return new Object(-1, sprintf(lang('msg_component_is_not_founded'), $component));
 			// Create an object after loading the class file
 			require_once($class_file);
 			$oComponent = new $component($editor_sequence, $class_path);
-			if(!$oComponent) return new Object(-1, sprintf(Context::getLang('msg_component_is_not_founded'), $component));
+			if(!$oComponent) return new Object(-1, sprintf(lang('msg_component_is_not_founded'), $component));
 			// Add configuration information
 			$component_info = $this->getComponent($component, $site_srl);
 			$oComponent->setInfo($component_info);

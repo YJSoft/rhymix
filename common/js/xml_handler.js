@@ -54,7 +54,7 @@
 		waiting_obj.css("opacity", 0.0);
 		var wfsr_timeout = setTimeout(function() {
 			if (show_waiting_message) {
-				waiting_obj.css("opacity", "").html(waiting_message).show();
+				waiting_obj.css("opacity", "").show();
 			}
 		}, 1000);
 		
@@ -69,13 +69,19 @@
 			var result = {};
 			$.each(data, function(key, val) {
 				if ($.inArray(key, ["error", "message", "act", "redirect_url"]) >= 0 || $.inArray(key, return_fields) >= 0) {
-					if ($.isArray(val)) {
-						result[key] = { item: val };
-					} else {
-						result[key] = val;
-					}
+					result[key] = val;
 				}
 			});
+			
+			// Add debug information.
+			if (data._rx_debug) {
+				data._rx_debug.page_title = "AJAX : " + params.module + "." + params.act;
+				if (window.rhymix_debug_add_data) {
+					window.rhymix_debug_add_data(data._rx_debug);
+				} else {
+					window.rhymix_debug_pending_data.push(data._rx_debug);
+				}
+			}
 			
 			// If the response contains an error, display the error message.
 			if (data.error != "0") {
@@ -96,9 +102,11 @@
 			}
 			
 			// If the response contains a redirect URL, redirect immediately.
-			if (result.redirect_url) {
-				window.location = result.redirect_url.replace(/&amp;/g, "&");
-				return null;
+			if (data.redirect_url) {
+				data.redirect_url = data.redirect_url.replace(/&amp;/g, "&");
+			}
+			if (data.redirect_url && !$.isFunction(callback_success)) {
+				return redirect(data.redirect_url);
 			}
 			
 			// If there was a success callback, call it.
@@ -124,8 +132,15 @@
 			// Hide the waiting message and display an error notice.
 			clearTimeout(wfsr_timeout);
 			waiting_obj.hide().trigger("cancel_confirm");
-			var error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")";
-			alert("AJAX communication error while requesting " + params.module + "." + params.act + "\n\n" + error_info);
+			var error_info;
+			
+			if ($(".x_modal-body").size()) {
+				error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")" + "<br><br><pre>" + xhr.responseText + "</pre>";
+				alert("AJAX communication error while requesting " + params.module + "." + params.act + "<br><br>" + error_info);
+			} else {
+				error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")" + "\n\n" + xhr.responseText;
+				alert("AJAX communication error while requesting " + params.module + "." + params.act + "\n\n" + error_info);
+			}
 		};
 		
 		// Send the AJAX request.
@@ -165,7 +180,7 @@
 		waiting_obj.css("opacity", 0.0);
 		var wfsr_timeout = setTimeout(function() {
 			if (show_waiting_message) {
-				waiting_obj.css("opacity", "").html(waiting_message).show();
+				waiting_obj.css("opacity", "").show();
 			}
 		}, 1000);
 		
@@ -176,9 +191,19 @@
 			clearTimeout(wfsr_timeout);
 			waiting_obj.hide().trigger("cancel_confirm");
 			
+			// Add debug information.
+			if (data._rx_debug) {
+				data._rx_debug.page_title = "AJAX : " + params.module + "." + params.act;
+				if (window.rhymix_debug_add_data) {
+					window.rhymix_debug_add_data(data._rx_debug);
+				} else {
+					window.rhymix_debug_pending_data.push(data._rx_debug);
+				}
+			}
+			
 			// If the response contains an error, display the error message.
 			if(data.error != "0" && data.error > -1000) {
-				if(data.error == -1 && data.message == "msg_is_not_administrator") {
+				if(data.error == -1 && data.message == "admin.msg_is_not_administrator") {
 					alert("You are not logged in as an administrator.");
 					if ($.isFunction(callback_error)) {
 						callback_error(data);
@@ -197,6 +222,14 @@
 				}
 			}
 			
+			// If the response contains a redirect URL, redirect immediately.
+			if (data.redirect_url) {
+				data.redirect_url = data.redirect_url.replace(/&amp;/g, "&");
+			}
+			if (data.redirect_url && !$.isFunction(callback_success)) {
+				return redirect(data.redirect_url);
+			}
+			
 			// If there was a success callback, call it.
 			if($.isFunction(callback_success)) {
 				callback_success(data);
@@ -207,8 +240,15 @@
 		var errorHandler = function(xhr, textStatus) {
 			clearTimeout(wfsr_timeout);
 			waiting_obj.hide().trigger("cancel_confirm");
-			var error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")";
-			alert("AJAX communication error while requesting " + params.module + "." + params.act + "\n\n" + error_info);
+			var error_info;
+			
+			if ($(".x_modal-body").size()) {
+				error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")" + "<br><br><pre>" + xhr.responseText + "</pre>";
+				alert("AJAX communication error while requesting " + params.module + "." + params.act + "<br><br>" + error_info);
+			} else {
+				error_info = xhr.status + " " + xhr.statusText + " (" + textStatus + ")" + "\n\n" + xhr.responseText;
+				alert("AJAX communication error while requesting " + params.module + "." + params.act + "\n\n" + error_info);
+			}
 		};
 		
 		// Send the AJAX request.
@@ -250,7 +290,7 @@
 		waiting_obj.css("opacity", 0.0);
 		var wfsr_timeout = setTimeout(function() {
 			if (show_waiting_message) {
-				waiting_obj.css("opacity", "").html(waiting_message).show();
+				waiting_obj.css("opacity", "").show();
 			}
 		}, 1000);
 		

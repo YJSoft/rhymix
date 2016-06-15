@@ -284,12 +284,13 @@ class commentItem extends Object
 	function getVote()
 	{
 		if(!$this->comment_srl) return false;
-		if($_SESSION['voted_comment'][$this->comment_srl])
+		if(isset($_SESSION['voted_comment'][$this->comment_srl]))
 		{
 			return $_SESSION['voted_comment'][$this->comment_srl];
 		}
 
 		$logged_info = Context::get('logged_info');
+		if(!$logged_info->member_srl) return false;
 
 		$args = new stdClass();
 		$args->member_srl = $logged_info->member_srl;
@@ -298,10 +299,10 @@ class commentItem extends Object
 
 		if($output->data->point)
 		{
-			return $output->data->point;
+			return $_SESSION['voted_comment'][$this->comment_srl] = $output->data->point;
 		}
 
-		return false;
+		return $_SESSION['voted_comment'][$this->comment_srl] = false;
 	}
 
 	/**
@@ -312,7 +313,7 @@ class commentItem extends Object
 	{
 		if($this->isSecret() && !$this->isAccessible())
 		{
-			return Context::getLang('msg_is_secret');
+			return lang('msg_is_secret');
 		}
 
 		$content = $this->get('content');
@@ -333,7 +334,7 @@ class commentItem extends Object
 	{
 		if($this->isSecret() && !$this->isAccessible())
 		{
-			return Context::getLang('msg_is_secret');
+			return lang('msg_is_secret');
 		}
 
 		$content = $this->get('content');
@@ -343,7 +344,7 @@ class commentItem extends Object
 		if($add_popup_menu && Context::get('is_logged'))
 		{
 			$content = sprintf(
-					'%s<div class="comment_popup_menu"><a href="#popup_menu_area" class="comment_%d" onclick="return false">%s</a></div>', $content, $this->comment_srl, Context::getLang('cmd_comment_do')
+					'%s<div class="comment_popup_menu"><a href="#popup_menu_area" class="comment_%d" onclick="return false">%s</a></div>', $content, $this->comment_srl, lang('cmd_comment_do')
 			);
 		}
 
@@ -495,7 +496,7 @@ class commentItem extends Object
 	 */
 	function getProfileImage()
 	{
-		if(!$this->isExists() || !$this->get('member_srl'))
+		if(!$this->isExists() || $this->get('member_srl') <= 0)
 		{
 			return;
 		}
@@ -516,7 +517,7 @@ class commentItem extends Object
 	function getSignature()
 	{
 		// pass if the posting not exists.
-		if(!$this->isExists() || !$this->get('member_srl'))
+		if(!$this->isExists() || $this->get('member_srl') <= 0)
 		{
 			return;
 		}

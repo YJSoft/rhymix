@@ -30,6 +30,9 @@
 		}
 	});
 
+	/* Array for pending debug data */
+	window.rhymix_debug_pending_data = [];
+
 	/**
 	 * @brief XE 공용 유틸리티 함수
 	 * @namespace XE
@@ -283,7 +286,7 @@ jQuery(function($) {
 			uri = uri.replace(re, toReplace);
 		}
 
-		var bUseSSL = !!window.enforce_ssl;
+		var bUseSSL = !!window.enforce_ssl || (location.protocol == 'https:');
 		if (!bUseSSL && isArray(window.ssl_actions) && (act=uri.getQuery('act'))) {
 			for (var i=0,c=ssl_actions.length; i < c; i++) {
 				if (ssl_actions[i] === act) {
@@ -377,6 +380,19 @@ function sendMailTo(to) {
 }
 
 /**
+ * @brief url이동 (Rhymix 개선된 버전)
+ */
+function redirect(url) {
+	if (url === window.location.href || url.indexOf(window.location.href.replace(/#.+$/, "") + "#") === 0 ||
+		url === window.location.pathname || url.indexOf(window.location.pathname.replace(/#.+$/, "") + "#") === 0) {
+		window.location.href = url;
+		window.location.reload();
+	} else {
+		window.location.href = url;
+	}
+}
+
+/**
  * @brief url이동 (open_window 값이 N 가 아니면 새창으로 띄움)
  **/
 function move_url(url, open_window) {
@@ -393,7 +409,7 @@ function move_url(url, open_window) {
 	if(open_window) {
 		winopen(url);
 	} else {
-		location.href=url;
+		redirect(url);
 	}
 
 	return false;
@@ -935,7 +951,7 @@ function getCookie(name) {
 }
 
 function is_def(v) {
-	return (typeof(v)!='undefined');
+	return typeof(v) != 'undefined' && v !== null;
 }
 
 function ucfirst(str) {

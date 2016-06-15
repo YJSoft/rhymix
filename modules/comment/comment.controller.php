@@ -207,7 +207,7 @@ class commentController extends comment
 
 		// if an user select message from options, message would be the option.
 		$message_option = strval(Context::get('message_option'));
-		$improper_comment_reasons = Context::getLang('improper_comment_reasons');
+		$improper_comment_reasons = lang('improper_comment_reasons');
 		$declare_message = ($message_option !== 'others' && isset($improper_comment_reasons[$message_option]))?
 			$improper_comment_reasons[$message_option] : trim(Context::get('declare_message'));
 
@@ -594,7 +594,7 @@ class commentController extends comment
 		if(!$manual_inserted)
 		{
 			// send a message if notify_message option in enabled in the original article
-			$oDocument->notify(Context::getLang('comment'), $obj->content);
+			$oDocument->notify(lang('comment'), $obj->content);
 
 			// send a message if notify_message option in enabled in the original comment
 			if($obj->parent_srl)
@@ -602,7 +602,7 @@ class commentController extends comment
 				$oParent = $oCommentModel->getComment($obj->parent_srl);
 				if($oParent->get('member_srl') != $oDocument->get('member_srl'))
 				{
-					$oParent->notify(Context::getLang('comment'), $obj->content);
+					$oParent->notify(lang('comment'), $obj->content);
 				}
 			}
 		}
@@ -829,9 +829,9 @@ class commentController extends comment
 		}
 
 		// set modifier's information if logged-in and posting author and modifier are matched.
+		$logged_info = Context::get('logged_info');
 		if(Context::get('is_logged'))
 		{
-			$logged_info = Context::get('logged_info');
 			if($source_obj->member_srl == $logged_info->member_srl)
 			{
 				$obj->member_srl = $logged_info->member_srl;
@@ -1227,7 +1227,7 @@ class commentController extends comment
 		// invalid vote if both ip addresses between author's and the current user are same.
 		if($oComment->get('ipaddress') == $_SERVER['REMOTE_ADDR'])
 		{
-			$_SESSION['voted_comment'][$comment_srl] = TRUE;
+			$_SESSION['voted_comment'][$comment_srl] = false;
 			return new Object(-1, $failed_voted);
 		}
 
@@ -1241,7 +1241,7 @@ class commentController extends comment
 			// session registered if the author information matches to the current logged-in user's.
 			if($member_srl && $member_srl == $oComment->get('member_srl'))
 			{
-				$_SESSION['voted_comment'][$comment_srl] = TRUE;
+				$_SESSION['voted_comment'][$comment_srl] = false;
 				return new Object(-1, $failed_voted);
 			}
 		}
@@ -1264,7 +1264,7 @@ class commentController extends comment
 		// session registered if log info contains recommendation vote log.
 		if($output->data->count)
 		{
-			$_SESSION['voted_comment'][$comment_srl] = TRUE;
+			$_SESSION['voted_comment'][$comment_srl] = false;
 			return new Object(-1, $failed_voted);
 		}
 

@@ -59,11 +59,7 @@ class ModuleObject extends Object
 	 * */
 	function setRedirectUrl($url = './', $output = NULL)
 	{
-		$ajaxRequestMethod = array_flip($this->ajaxRequestMethod);
-		if(!isset($ajaxRequestMethod[Context::getRequestMethod()]))
-		{
-			$this->add('redirect_url', $url);
-		}
+		$this->add('redirect_url', $url);
 
 		if($output !== NULL && is_object($output))
 		{
@@ -195,7 +191,7 @@ class ModuleObject extends Object
 			{
 				case 'root' :
 				case 'manager' :
-					$this->stop('msg_is_not_administrator');
+					$this->stop('admin.msg_is_not_administrator');
 					return;
 				case 'member' :
 					if(!$is_logged)
@@ -240,7 +236,8 @@ class ModuleObject extends Object
 
 		$this->setTemplatePath($oMessageObject->getTemplatePath());
 		$this->setTemplateFile($oMessageObject->getTemplateFile());
-
+		$this->setHttpStatusCode($oMessageObject->getHttpStatusCode());
+		
 		return $this;
 	}
 
@@ -384,7 +381,6 @@ class ModuleObject extends Object
 		// pass if stop_proc is true
 		if($this->stop_proc)
 		{
-			debugPrint($this->message, 'ERROR');
 			return FALSE;
 		}
 
@@ -447,6 +443,18 @@ class ModuleObject extends Object
 			return FALSE;
 		}
 
+		// check return value of action
+		if($output instanceof Object)
+		{
+			$this->setError($output->getError());
+			$this->setMessage($output->getMessage());
+			$original_output = clone $output;
+		}
+		else
+		{
+			$original_output = null;
+		}
+
 		// trigger call
 		$triggerOutput = ModuleHandler::triggerCall('moduleObject.proc', 'after', $this);
 		if(!$triggerOutput->toBool())
@@ -462,16 +470,17 @@ class ModuleObject extends Object
 		$addon_file = $oAddonController->getCacheFilePath(Mobile::isFromMobilePhone() ? "mobile" : "pc");
 		if(FileHandler::exists($addon_file)) include($addon_file);
 
-		if(is_a($output, 'Object') || is_subclass_of($output, 'Object'))
+		if($original_output instanceof Object && !$original_output->toBool())
+		{
+			return FALSE;
+		}
+		elseif($output instanceof Object && $output->getError())
 		{
 			$this->setError($output->getError());
 			$this->setMessage($output->getMessage());
-
-			if(!$output->toBool())
-			{
-				return FALSE;
-			}
+			return FALSE;
 		}
+
 		// execute api methods of the module if view action is and result is XMLRPC or JSON
 		if($this->module_info->module_type == 'view' || $this->module_info->module_type == 'mobile')
 		{

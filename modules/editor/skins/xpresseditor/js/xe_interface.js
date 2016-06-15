@@ -2,11 +2,14 @@ if (!window.xe) xe = {};
 
 xe.Editors = [];
 
-function editorStart_xe(editor_sequence, primary_key, content_key, editor_height, colorset, content_style, content_font, content_font_size) {
+function editorStart_xe(editor_sequence, primary_key, content_key, editor_height, colorset, content_style, content_font, content_font_size, content_line_height, content_paragraph_spacing, content_word_break) {
 	if(typeof(colorset)=='undefined') colorset = 'white';
 	if(typeof(content_style)=='undefined') content_style = 'xeStyle';
 	if(typeof(content_font)=='undefined') content_font= '';
 	if(typeof(content_font_size)=='undefined') content_font_size= '';
+	if(typeof(content_line_height)=='undefined') content_line_height= '';
+	if(typeof(content_paragraph_spacing)=='undefined') content_paragraph_spacing= '';
+	if(typeof(content_word_break)=='undefined') content_word_break= '';
 
 	var target_src = request_uri+'modules/editor/styles/'+content_style+'/editor.html';
 
@@ -40,9 +43,6 @@ function editorStart_xe(editor_sequence, primary_key, content_key, editor_height
 	
 	var content = form[content_key].value;
 	if(xFF && !content) content = '<br />';
-
-	// src, href, url의 XE 상대경로를 http로 시작하는 full path로 변경
-	content = editorReplacePath(content);
 
 	form[content_key].value = content;
 	jQuery("#xpress-editor-"+editor_sequence).val(content);
@@ -135,7 +135,36 @@ function editorStart_xe(editor_sequence, primary_key, content_key, editor_height
 			if(content_font_size && !doc.body.style.fontSize) {
 				doc.body.style.fontSize = content_font_size;
 			}
-
+			if(content_line_height && !doc.body.style.lineHeight) {
+				doc.body.style.lineHeight = content_line_height;
+			}
+			if(content_word_break === "none") {
+				doc.body.style.whiteSpace = "nowrap";
+			} else {
+				doc.body.style.wordBreak = content_word_break ? content_word_break : "normal";
+				doc.body.style.wordWrap = "break-word";
+			}
+			
+			var paragraph_css;
+			if(!content_paragraph_spacing) {
+				paragraph_css = '.xe_content.editable p { margin: 0; }';
+			} else {
+				paragraph_css = '.xe_content.editable p { margin: 0 0 ' + content_paragraph_spacing + ' 0; }';
+			}
+    		var style = doc.createElement('style');
+			style.type = 'text/css';
+			if (style.styleSheet){
+				style.styleSheet.cssText = paragraph_css;
+			} else {
+				style.appendChild(doc.createTextNode(paragraph_css));
+			}
+			var head = doc.head || doc.getElementsByTagName('head')[0];
+			head.appendChild(style);
+			
+			if(content_style === "ckeditor_light") {
+				doc.body.style.margin = "0";
+			}
+			
 			// run
 			oEditor.run();
 		} catch(e) {
@@ -203,22 +232,8 @@ function editorGetIframe(srl) {
 }
 
 function editorReplaceHTML(iframe_obj, content) {
-	// src, href, url의 XE 상대경로를 http로 시작하는 full path로 변경
-	content = editorReplacePath(content);
-
 	var srl = parseInt(iframe_obj.id.replace(/^.*_/,''),10);
 	editorRelKeys[srl]["pasteHTML"](content);
-}
-
-function editorReplacePath(content) {
-	// 태그 내 src, href, url의 XE 상대경로를 http로 시작하는 full path로 변경
-	content = content.replace(/\<([^\>\<]*)(src=|href=|url\()("|\')*([^"\'\)]+)("|\'|\))*(\s|>)*/ig, function(m0,m1,m2,m3,m4,m5,m6) {
-		if(m2=="url(") { m3=''; m5=')'; } else { if(typeof(m3)=='undefined') m3 = '"'; if(typeof(m5)=='undefined') m5 = '"'; if(typeof(m6)=='undefined') m6 = ''; }
-		var val = jQuery.trim(m4).replace(/^\.\//,'');
-		if(/^(http\:|https\:|ftp\:|telnet\:|mms\:|mailto\:|\/|\.\.|\#)/i.test(val)) return m0;
-		return '<'+m1+m2+m3+request_uri+val+m5+m6;
-	});
-	return content;
 }
 
 function editorGetAutoSavedDoc(form) {

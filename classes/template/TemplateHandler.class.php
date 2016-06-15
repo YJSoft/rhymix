@@ -42,16 +42,13 @@ class TemplateHandler
 	{
 		static $oTemplate = NULL;
 
-		if(__DEBUG__ == 3)
+		if(!isset($GLOBALS['__TemplateHandlerCalled__']))
 		{
-			if(!isset($GLOBALS['__TemplateHandlerCalled__']))
-			{
-				$GLOBALS['__TemplateHandlerCalled__'] = 1;
-			}
-			else
-			{
-				$GLOBALS['__TemplateHandlerCalled__']++;
-			}
+			$GLOBALS['__TemplateHandlerCalled__'] = 1;
+		}
+		else
+		{
+			$GLOBALS['__TemplateHandlerCalled__']++;
 		}
 
 		if(!$oTemplate)
@@ -117,13 +114,8 @@ class TemplateHandler
 	 */
 	public function compile($tpl_path, $tpl_filename, $tpl_file = '')
 	{
-		$buff = false;
-
 		// store the starting time for debug information
-		if(__DEBUG__ == 3)
-		{
-			$start = microtime(true);
-		}
+		$start = microtime(true);
 
 		// initiation
 		$this->init($tpl_path, $tpl_filename, $tpl_file);
@@ -142,38 +134,31 @@ class TemplateHandler
 
 		$source_template_mtime = filemtime($this->file);
 		$latest_mtime = $source_template_mtime > $this->handler_mtime ? $source_template_mtime : $this->handler_mtime;
-
-		// cache control
-		$oCacheHandler = CacheHandler::getInstance('template');
-
-		// get cached buff
-		if($oCacheHandler->isSupport())
-		{
-			$cache_key = 'template:' . $this->file;
-			$buff = $oCacheHandler->get($cache_key, $latest_mtime);
-		}
-		else
-		{
-			if(is_readable($this->compiled_file) && filemtime($this->compiled_file) > $latest_mtime && filesize($this->compiled_file))
-			{
-				$buff = 'file://' . $this->compiled_file;
-			}
-		}
-
-		if($buff === FALSE)
+		
+		// make compiled file
+		if(!file_exists($this->compiled_file) || filemtime($this->compiled_file) < $latest_mtime)
 		{
 			$buff = $this->parse();
-			if($oCacheHandler->isSupport())
+			if(Rhymix\Framework\Storage::write($this->compiled_file, $buff) === false)
 			{
-				$oCacheHandler->put($cache_key, $buff);
-			}
-			else
-			{
-				FileHandler::writeFile($this->compiled_file, $buff);
+				$tmpfilename = tempnam(sys_get_temp_dir(), 'rx-compiled');
+				if($tmpfilename === false || Rhymix\Framework\Storage::write($tmpfilename, $buff) === false)
+				{
+					return 'Fatal Error : Cannot create temporary file. Please check permissions.';
+				}
+				
+				$this->compiled_file = $tmpfilename;
 			}
 		}
-
-		$output = $this->_fetch($buff);
+		
+		Rhymix\Framework\Debug::addFilenameAlias($this->file, $this->compiled_file);
+		$output = $this->_fetch($this->compiled_file);
+		
+		// delete tmpfile
+		if(isset($tmpfilename))
+		{
+			Rhymix\Framework\Storage::delete($tmpfilename);
+		}
 
 		if($__templatehandler_root_tpl == $this->file)
 		{
@@ -181,10 +166,7 @@ class TemplateHandler
 		}
 
 		// store the ending time for debug information
-		if(__DEBUG__ == 3)
-		{
-			$GLOBALS['__template_elapsed__'] += microtime(true) - $start;
-		}
+		$GLOBALS['__template_elapsed__'] += microtime(true) - $start;
 
 		return $output;
 	}
@@ -355,57 +337,23 @@ class TemplateHandler
 
 	/**
 	 * fetch using ob_* function
-	 * @param string $buff if buff is not null, eval it instead of including compiled template file
+	 * @param string $filename compiled template file name
 	 * @return string
 	 */
-	private function _fetch($buff)
+	private function _fetch($filename)
 	{
-		if(!$buff)
-		{
-			return;
-		}
-
 		$__Context = Context::getInstance();
 		$__Context->tpl_path = $this->path;
 
-		$level = ob_get_level();
+		$__ob_level_before_fetch = ob_get_level();
 		ob_start();
-		if(substr($buff, 0, 7) == 'file://')
-		{
-			if(__DEBUG__)
-			{
-				//load cache file from disk
-				$eval_str = FileHandler::readFile(substr($buff, 7));
-				$eval_str_buffed = "?>" . $eval_str;
-				@eval($eval_str_buffed);
-				$error_info = error_get_last();
-				//parse error
-				if ($error_info['type'] == 4)
-				{
-				    throw new Exception("Error Parsing Template - {$error_info['message']} in template file {$this->file}");
-				}
-			}
-			else
-			{
-				include(substr($buff, 7));
-			}
-		}
-		else
-		{
-			$eval_str = "?>" . $buff;
-			@eval($eval_str);
-			$error_info = error_get_last();
-			//parse error
-			if ($error_info['type'] == 4)
-			{
-			    throw new Exception("Error Parsing Template - {$error_info['message']} in template file {$this->file}");
-			}
-		}
-
+		
+		include $filename;
+		
 		$contents = '';
-		while (ob_get_level() - $level > 0) {
-			$contents .= ob_get_contents();
-			ob_end_clean();
+		while (ob_get_level() > $__ob_level_before_fetch)
+		{
+			$contents .= ob_get_clean();
 		}
 		return $contents;
 	}
@@ -741,6 +689,8 @@ class TemplateHandler
 							}
 							break;
 						case 'css':
+						case 'less':
+						case 'scss':
 							if($doUnload)
 							{
 								$result = "Context::unloadFile('{$attr['target']}','{$attr['targetie']}','{$attr['media']}');";
@@ -748,7 +698,7 @@ class TemplateHandler
 							else
 							{
 								$metafile = $attr['target'];
-								$result = "\$__tmp=array('{$attr['target']}','{$attr['media']}','{$attr['targetie']}','{$attr['index']}');Context::loadFile(\$__tmp);unset(\$__tmp);";
+								$result = "\$__tmp=array('{$attr['target']}','{$attr['media']}','{$attr['targetie']}','{$attr['index']}'," . ($attr['vars'] ? self::_replaceVar($attr['vars']) : 'array()') . ");Context::loadFile(\$__tmp);unset(\$__tmp);";
 							}
 							break;
 					}

@@ -112,7 +112,7 @@ class adminAdminModel extends admin
 		$connection = ftp_connect($ftp_info->ftp_host, $ftp_info->ftp_port);
 		if(!$connection)
 		{
-			return new Object(-1, sprintf(Context::getLang('msg_ftp_not_connected'), $ftp_host));
+			return new Object(-1, sprintf(lang('msg_ftp_not_connected'), $ftp_host));
 		}
 
 		$login_result = @ftp_login($connection, $ftp_info->ftp_user, $ftp_info->ftp_password);
@@ -216,7 +216,7 @@ class adminAdminModel extends admin
 		$oFTP = new ftp();
 		if(!$oFTP->ftp_connect($ftp_info->ftp_host, $ftp_info->ftp_port))
 		{
-			return new Object(1, sprintf(Context::getLang('msg_ftp_not_connected'), $ftp_info->ftp_host));
+			return new Object(1, sprintf(lang('msg_ftp_not_connected'), $ftp_info->ftp_host));
 		}
 
 		if(!$oFTP->ftp_login($ftp_info->ftp_user, $ftp_info->ftp_password))
@@ -940,27 +940,58 @@ class adminAdminModel extends admin
 	{
 		return $this->iconUrlCheck('mobicon.png', 'mobiconSample.png', $default);
 	}
-
-	function iconUrlCheck($iconname, $default_icon_name, $default)
+	
+	function getSiteDefaultImageUrl(&$width = 0, &$height = 0)
 	{
 		$site_info = Context::get('site_module_info');
-		$virtual_site = '';
-		if($site_info->site_srl) 
+		if ($site_info->site_srl) 
 		{
 			$virtual_site = $site_info->site_srl . '/';
 		}
-
-		$file_exsit = FileHandler::readFile(_XE_PATH_ . 'files/attach/xeicon/' . $virtual_site . $iconname);
-		if(!$file_exsit && $default === true)
-        {
-            $icon_url = './modules/admin/tpl/img/' . $default_icon_name;
-        }
-        elseif($file_exsit)
+		else
 		{
-			$default_url = Context::getDefaultUrl();
-			$icon_url = $default_url . 'files/attach/xeicon/' . $virtual_site . $iconname;
+			$virtual_site = '';
 		}
-		return $icon_url;
+		
+		$info = Rhymix\Framework\Storage::readPHPData(\RX_BASEDIR . 'files/attach/xeicon/' . $virtual_site . 'default_image.php');
+		if ($info && Rhymix\Framework\Storage::exists(\RX_BASEDIR . $info['filename']))
+		{
+			$width = $info['width'];
+			$height = $info['height'];
+			return \RX_BASEURL . $info['filename'] . '?' . date('YmdHis', filemtime(\RX_BASEDIR . $info['filename']));
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	function iconUrlCheck($iconname, $default_icon_name, $default)
+	{
+		if ($default)
+		{
+			return \RX_BASEURL . 'modules/admin/tpl/img/' . $default_icon_name;
+		}
+		
+		$site_info = Context::get('site_module_info');
+		if ($site_info->site_srl) 
+		{
+			$virtual_site = $site_info->site_srl . '/';
+		}
+		else
+		{
+			$virtual_site = '';
+		}
+		
+		$filename = 'files/attach/xeicon/' . $virtual_site . $iconname;
+		if (Rhymix\Framework\Storage::exists(\RX_BASEDIR . $filename))
+		{
+			return \RX_BASEURL . $filename . '?' . date('YmdHis', filemtime(\RX_BASEDIR . $filename));
+		}
+		else
+		{
+			return false;
+		}
 	}
 
 }

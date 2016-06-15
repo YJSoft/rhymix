@@ -31,7 +31,7 @@ class Object
 	 * http status code.
 	 * @var int
 	 */
-	var $httpStatusCode = NULL;
+	var $httpStatusCode = 200;
 
 	/**
 	 * Constructor
@@ -73,9 +73,9 @@ class Object
 	 * @param int $code HTTP status code. Default value is `200` that means successful
 	 * @return void
 	 */
-	function setHttpStatusCode($code = '200')
+	function setHttpStatusCode($code = 200)
 	{
-		$this->httpStatusCode = $code;
+		$this->httpStatusCode = (int) $code;
 	}
 
 	/**
@@ -96,7 +96,7 @@ class Object
 	 */
 	function setMessage($message = 'success', $type = NULL)
 	{
-		if($str = Context::getLang($message))
+		if($str = lang($message))
 		{
 			$this->message = $str;
 		}

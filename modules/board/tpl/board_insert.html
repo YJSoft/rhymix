@@ -30,6 +30,18 @@
 			</div>
 		</div>
 		<div class="x_control-group">
+			<label class="x_control-label" for="lang_meta_keywords">{$lang->meta_keywords}</label>
+			<div class="x_controls">
+				<input type="text" name="meta_keywords" id="meta_keywords" value="<!--@if(strpos($module_info->meta_keywords, '$user_lang->') === false)-->{$module_info->meta_keywords}<!--@else-->{htmlspecialchars($module_info->meta_keywords)}<!--@end-->" class="lang_code" />
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label" for="lang_meta_description">{$lang->meta_description}</label>
+			<div class="x_controls">
+				<input type="text" name="meta_description" id="meta_description" value="<!--@if(strpos($module_info->meta_description, '$user_lang->') === false)-->{$module_info->meta_description}<!--@else-->{htmlspecialchars($module_info->meta_description)}<!--@end-->" class="lang_code" />
+			</div>
+		</div>
+		<div class="x_control-group">
 			<label class="x_control-label" for="layout_srl">{$lang->layout}</label>
 			<div class="x_controls">
 				<select name="layout_srl" id="layout_srl">
@@ -72,19 +84,31 @@
 		<div class="x_control-group">
 			<label class="x_control-label" for="lang_header_text">{$lang->header_text}</label>
 			<div class="x_controls">
-				<textarea name="header_text" id="header_text" class="lang_code" rows="8" cols="42" placeholder="{$lang->about_header_text}"><!--@if(strpos($module_info->header_text, '$user_lang->') === false)-->{$module_info->header_text}<!--@else-->{htmlspecialchars($module_info->header_text)}<!--@end--></textarea>
-				<a href="#header_text_help" class="x_icon-question-sign" data-toggle>{$lang->help}</a>
-				<p id="header_text_help" class="x_help-block" hidden>{$lang->about_header_text}</p>
+				<textarea name="header_text" id="header_text" class="lang_code" rows="8" cols="42"><!--@if(strpos($module_info->header_text, '$user_lang->') === false)-->{$module_info->header_text}<!--@else-->{htmlspecialchars($module_info->header_text)}<!--@end--></textarea>
+				<p id="header_text_help" class="x_help-block">{$lang->about_header_text}</p>
 			</div>
 		</div>
 		<div class="x_control-group">
 			<label class="x_control-label" for="lang_footer_text">{$lang->footer_text}</label>
 			<div class="x_controls">
-				<textarea name="footer_text" id="footer_text" class="lang_code" rows="8" cols="42" placeholder="{$lang->about_footer_text}"><!--@if(strpos($module_info->footer_text, '$user_lang->') === false)-->{$module_info->footer_text}<!--@else-->{htmlspecialchars($module_info->footer_text)}<!--@end--></textarea>
-				<a href="#footer_text_help" class="x_icon-question-sign" data-toggle>{$lang->help}</a>
-				<p id="footer_text_help" class="x_help-block" hidden>{$lang->about_footer_text}</p>
+				<textarea name="footer_text" id="footer_text" class="lang_code" rows="8" cols="42"><!--@if(strpos($module_info->footer_text, '$user_lang->') === false)-->{$module_info->footer_text}<!--@else-->{htmlspecialchars($module_info->footer_text)}<!--@end--></textarea>
+				<p id="footer_text_help" class="x_help-block">{$lang->about_footer_text}</p>
 			</div>
 		</div>
+	<div class="x_control-group">
+		<label class="x_control-label" for="lang_mobile_header_text">{$lang->mobile_header_text}</label>
+		<div class="x_controls">
+			<textarea name="mobile_header_text" id="mobile_header_text" class="lang_code" rows="8" cols="42"><!--@if(strpos($module_info->footer_text, '$user_lang->') === false)-->{$module_info->mobile_header_text}<!--@else-->{htmlspecialchars($module_info->mobile_header_text)}<!--@end--></textarea>
+			<p id="mobile_header_text_help" class="x_help-block">{$lang->about_mobile_header_text}</p>
+		</div>
+	</div>
+	<div class="x_control-group">
+		<label class="x_control-label" for="lang_mobile_footer_text">{$lang->mobile_footer_text}</label>
+		<div class="x_controls">
+			<textarea name="mobile_footer_text" id="mobile_footer_text" class="lang_code" rows="8" cols="42"><!--@if(strpos($module_info->footer_text, '$user_lang->') === false)-->{$module_info->mobile_footer_text}<!--@else-->{htmlspecialchars($module_info->mobile_footer_text)}<!--@end--></textarea>
+			<p id="mobile_footer_text_help" class="x_help-block">{$lang->about_mobile_footer_text}</p>
+		</div>
+	</div>
 	</section>
 	<section class="section">
 		<h1>{$lang->mobile_settings}</h1>
@@ -194,21 +218,48 @@
 			</div>
 		</div>
 		<div class="x_control-group">
+			<label class="x_control-label">{$lang->anonymous_name}</label>
+			<div class="x_controls">
+				<input type="text" name="anonymous_name" id="anonymous_name" value="{$module_info->anonymous_name ?: 'anonymous'}" />
+				<a href="#anonymous_name_help" class="x_icon-question-sign" data-toggle>{$lang->help}</a>
+				<p id="anonymous_name_help" class="x_help-block" hidden>{$lang->about_anonymous_name}</p>
+			</div>
+		</div>
+		<div class="x_control-group">
 			<label class="x_control-label">{$lang->consultation}</label>
 			<div class="x_controls">
 				<label class="x_inline" for="consultation"><input type="checkbox" name="consultation" id="consultation" value="Y" checked="checked"|cond="$module_info->consultation == 'Y'" /> {$lang->about_consultation}</label>
 			</div>
 		</div>
 		<div class="x_control-group">
+			<label class="x_control-label">{$lang->update_log}</label>
+			<div class="x_controls">
+				<label class="x_inline" for="update_log"><input type="checkbox" name="update_log" id="update_log" value="Y" checked="checked"|cond="$module_info->update_log == 'Y'" /> {$lang->about_update_log}</label>
+				<p>{$lang->msg_warning_update_log}</p>
+			</div>
+		</div>
+		<div class="x_control-group">
 			<label class="x_control-label">{$lang->protect_content}</label>
 			<div class="x_controls">
-				<label class="x_inline" for="protect_content"><input type="checkbox" name="protect_content" id="protect_content" value="Y" checked="checked"|cond="$module_info->protect_content == 'Y'" /> {$lang->about_protect_content}</label>
+				<label class="x_inline" for="protect_delete_content"><input type="checkbox" name="protect_delete_content" id="protect_delete_content" value="Y" checked="checked"|cond="$module_info->protect_delete_content == 'Y'" /> {$lang->cmd_delete}</label>
+				<label class="x_inline" for="protect_update_content"><input type="checkbox" name="protect_update_content" id="protect_update_content" value="Y" checked="checked"|cond="$module_info->protect_update_content == 'Y'" /> {$lang->cmd_modify}</label>
+				<p>{$lang->about_protect_content}</p>
 			</div>
 		</div>
 		<div class="x_control-group">
 			<label class="x_control-label">{$lang->protect_comment}</label>
 			<div class="x_controls">
-				<label class="x_inline" for="protect_comment"><input type="checkbox" name="protect_comment" id="protect_comment" value="Y" checked="checked"|cond="$module_info->protect_comment == 'Y'" /> {$lang->about_protect_comment}</label>
+				<label class="x_inline" for="protect_delete_comment"><input type="checkbox" name="protect_delete_comment" id="protect_delete_comment" value="Y" checked="checked"|cond="$module_info->protect_delete_comment == 'Y'" />{$lang->cmd_delete} </label>
+				<label class="x_inline" for="protect_update_comment"><input type="checkbox" name="protect_update_comment" id="protect_update_comment" value="Y" checked="checked"|cond="$module_info->protect_update_comment == 'Y'" />{$lang->cmd_modify} </label>
+				<p>{$lang->about_protect_comment}</p>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label">{$lang->protect_regdate}</label>
+			<div class="x_controls">
+				{$lang->document} : <input type="number" name="protect_document_regdate" id="protect_document_regdate" value="{$module_info->protect_document_regdate}" />
+				{$lang->comment} : <input type="number" name="protect_comment_regdate" id="protect_comment_regdate" value="{$module_info->protect_comment_regdate}" />
+				<p>{$lang->about_protect_regdate}</p>
 			</div>
 		</div>
 		<div class="x_control-group">

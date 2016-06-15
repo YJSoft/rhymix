@@ -50,6 +50,10 @@ class boardController extends board
 			unset($obj->title_color);
 			unset($obj->title_bold);
 		}
+		else
+		{
+			$obj->is_admin = 'Y';
+		}
 
 		// generate document module model object
 		$oDocumentModel = getModel('document');
@@ -84,7 +88,7 @@ class boardController extends board
 				$obj->member_srl = -1*$logged_info->member_srl;
 			}
 			$obj->email_address = $obj->homepage = $obj->user_id = '';
-			$obj->user_name = $obj->nick_name = 'anonymous';
+			$obj->user_name = $obj->nick_name = $this->createAnonymousName($this->module_info->anonymous_name ?: 'anonymous', $logged_info->member_srl, $obj->document_srl);
 			$bAnonymous = true;
 			if($is_update===false)
 			{
@@ -106,6 +110,11 @@ class boardController extends board
 			}
 		}
 
+		if($this->module_info->update_log == 'Y')
+		{
+			$obj->update_log_setting = 'Y';
+		}
+
 		// update the document if it is existed
 		if($is_update)
 		{
@@ -114,9 +123,27 @@ class boardController extends board
 				return new Object(-1,'msg_not_permitted');
 			}
 
-			if($this->module_info->protect_content=="Y" && $oDocument->get('comment_count')>0 && $this->grant->manager==false)
+			if($this->module_info->protect_content == 'Y' || $this->module_info->protect_update_content == 'Y')
 			{
-				return new Object(-1,'msg_protect_content');
+				if($oDocument->get('comment_count') > 0 && $this->grant->manager == false)
+				{
+					return new Object(-1, 'msg_protect_update_content');
+				}
+			}
+
+			if($this->module_info->use_anonymous == 'Y') {
+				$obj->member_srl = abs($oDocument->get('member_srl')) * -1;
+				$oDocument->add('member_srl', $obj->member_srl);
+			}
+
+			if($this->module_info->protect_document_regdate > 0 && $this->grant->manager == false)
+			{
+				if($oDocument->get('regdate') < date('YmdHis', strtotime('-'.$this->module_info->protect_document_regdate.' day')))
+				{
+					$format =  lang('msg_protect_regdate_document');
+					$massage = sprintf($format, $this->module_info->protect_document_regdate);
+					return new Object(-1, $massage);
+				}
 			}
 
 			if(!$this->grant->manager)
@@ -133,12 +160,14 @@ class boardController extends board
 				$obj->last_update = $obj->regdate = date('YmdHis');
 				$obj->update_order = $obj->list_order = (getNextSequence() * -1);
 			}
-
-			$output = $oDocumentController->updateDocument($oDocument, $obj);
+			$obj->reason_update = escape($obj->reason_update);
+			$output = $oDocumentController->updateDocument($oDocument, $obj, true);
 			$msg_code = 'success_updated';
 
 		// insert a new document otherwise
-		} else {
+		}
+		else
+		{
 			$output = $oDocumentController->insertDocument($obj, $bAnonymous);
 			$msg_code = 'success_registed';
 			$obj->document_srl = $output->get('document_srl');
@@ -158,7 +187,7 @@ class boardController extends board
 				$oMail = new Mail();
 				$oMail->setTitle($obj->title);
 				$oMail->setContent( sprintf("From : <a href=\"%s\">%s</a><br/>\r\n%s", getFullUrl('','document_srl',$obj->document_srl), getFullUrl('','document_srl',$obj->document_srl), $obj->content));
-				$oMail->setSender($obj->user_name ? $obj->user_name : 'anonymous', $obj->email_address ? $obj->email_address : $member_config->webmaster_email);
+				$oMail->setSender($obj->user_name ?: null, $obj->email_address ? $obj->email_address : $member_config->webmaster_email);
 
 				$target_mail = explode(',',$this->module_info->admin_mail);
 				for($i=0;$i<count($target_mail);$i++)
@@ -178,11 +207,54 @@ class boardController extends board
 		}
 
 		// return the results
+		$this->setRedirectUrl(getNotEncodedUrl('', 'mid', Context::get('mid'), 'act', '', 'document_srl', $output->get('document_srl')));
 		$this->add('mid', Context::get('mid'));
 		$this->add('document_srl', $output->get('document_srl'));
 
 		// alert a message
 		$this->setMessage($msg_code);
+	}
+
+	function procBoardRevertDocument()
+	{
+		$update_id = Context::get('update_id');
+		$logged_info = Context::get('logged_info');
+		if(!$update_id)
+		{
+			return new Object(-1, 'msg_no_update_id');
+		}
+
+		$oDocumentModel = getModel('document');
+		$oDocumentController = getController('document');
+		$update_log = $oDocumentModel->getUpdateLog($update_id);
+
+		if($logged_info->is_admin != 'Y')
+		{
+			$Exists_log = $oDocumentModel->getUpdateLogAdminisExists($update_log->document_srl);
+			if($Exists_log === true)
+			{
+				return new Object(-1, 'msg_admin_update_log');
+			}
+		}
+
+		if(!$update_log)
+		{
+			return new Object(-1, 'msg_no_update_log');
+		}
+
+		$oDocument = $oDocumentModel->getDocument($update_log->document_srl);
+		$obj = new stdClass();
+		$obj->title = $update_log->title;
+		$obj->document_srl = $update_log->document_srl;
+		$obj->title_bold = $update_log->title_bold;
+		$obj->title_color = $update_log->title_color;
+		$obj->content = $update_log->content;
+		$obj->update_log_setting = 'Y';
+		$obj->reason_update = lang('board.revert_reason_update');
+		$output = $oDocumentController->updateDocument($oDocument, $obj);
+		$this->setRedirectUrl(getNotEncodedUrl('', 'mid', Context::get('mid'),'act', '', 'document_srl', $update_log->document_srl));
+		$this->add('mid', Context::get('mid'));
+		$this->add('document_srl', $update_log->document_srl);
 	}
 
 	/**
@@ -202,11 +274,23 @@ class boardController extends board
 		$oDocumentModel = &getModel('document');
 		$oDocument = $oDocumentModel->getDocument($document_srl);
 		// check protect content
-		if($this->module_info->protect_content=="Y" && $oDocument->get('comment_count')>0 && $this->grant->manager==false)
+		if($this->module_info->protect_content == 'Y' || $this->module_info->protect_delete_content == 'Y')
 		{
-			return new Object(-1, 'msg_protect_content');
+			if($oDocument->get('comment_count') > 0 && $this->grant->manager == false)
+			{
+				return new Object(-1, 'msg_protect_delete_content');
+			}
 		}
 
+		if($this->module_info->protect_document_regdate > 0 && $this->grant->manager == false)
+		{
+			if($oDocument->get('regdate') < date('YmdHis', strtotime('-'.$this->module_info->protect_document_regdate.' day')))
+			{
+				$format =  lang('msg_protect_regdate_document');
+				$massage = sprintf($format, $this->module_info->protect_document_regdate);
+				return new Object(-1, $massage);
+			}
+		}
 		// generate document module controller object
 		$oDocumentController = getController('document');
 
@@ -283,7 +367,7 @@ class boardController extends board
 			$obj->notify_message = 'N';
 			$obj->member_srl = -1*$logged_info->member_srl;
 			$obj->email_address = $obj->homepage = $obj->user_id = '';
-			$obj->user_name = $obj->nick_name = 'anonymous';
+			$obj->user_name = $obj->nick_name = $this->createAnonymousName($this->module_info->anonymous_name ?: 'anonymous', $logged_info->member_srl, $obj->document_srl);
 			$bAnonymous = true;
 		}
 		else
@@ -306,12 +390,12 @@ class boardController extends board
 		else
 		{
 			$comment = $oCommentModel->getComment($obj->comment_srl, $this->grant->manager);
-			if($this->module_info->protect_comment === 'Y' && $this->grant->manager == false)
+			if($this->module_info->protect_update_comment === 'Y' && $this->grant->manager == false)
 			{
 				$childs = $oCommentModel->getChildComments($obj->comment_srl);
-				if (count($childs) > 0)
+				if(count($childs) > 0)
 				{
-					return new Object(-1, 'msg_board_protect_comment');
+					return new Object(-1, 'msg_board_update_protect_comment');
 				}
 			}
 		}
@@ -349,6 +433,15 @@ class boardController extends board
 		}
 		else
 		{
+			if($this->module_info->protect_comment_regdate > 0 && $this->grant->manager == false)
+			{
+				if($comment->get('regdate') < date('YmdHis', strtotime('-'.$this->module_info->protect_document_regdate.' day')))
+				{
+					$format =  lang('msg_protect_regdate_comment');
+					$massage = sprintf($format, $this->module_info->protect_document_regdate);
+					return new Object(-1, $massage);
+				}
+			}
 			// check the grant
 			if(!$comment->isGranted())
 			{
@@ -365,6 +458,7 @@ class boardController extends board
 		}
 
 		$this->setMessage('success_registed');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'mid', Context::get('mid'), 'act', '', 'document_srl', $obj->document_srl) . '#comment_' . $obj->comment_srl);
 		$this->add('mid', Context::get('mid'));
 		$this->add('document_srl', $obj->document_srl);
 		$this->add('comment_srl', $obj->comment_srl);
@@ -384,15 +478,24 @@ class boardController extends board
 
 		$oCommentModel = getModel('comment');
 
-		if($this->module_info->protect_comment === 'Y' && $this->grant->manager==false)
+		if($this->module_info->protect_delete_comment === 'Y' && $this->grant->manager == false)
 		{
 			$childs = $oCommentModel->getChildComments($comment_srl);
 			if(count($childs) > 0)
 			{
-				return new Object(-1, 'msg_board_protect_comment');
+				return new Object(-1, 'msg_board_delete_protect_comment');
 			}
 		}
-
+		$comment = $oCommentModel->getComment($comment_srl, $this->grant->manager);
+		if($this->module_info->protect_comment_regdate > 0 && $this->grant->manager == false)
+		{
+			if($comment->get('regdate') < date('YmdHis', strtotime('-'.$this->module_info->protect_document_regdate.' day')))
+			{
+				$format =  lang('msg_protect_regdate_comment');
+				$massage = sprintf($format, $this->module_info->protect_document_regdate);
+				return new Object(-1, $massage);
+			}
+		}
 		// generate comment  controller object
 		$oCommentController = getController('comment');
 
@@ -406,6 +509,7 @@ class boardController extends board
 		$this->add('page', Context::get('page'));
 		$this->add('document_srl', $output->get('document_srl'));
 		$this->setMessage('success_deleted');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'mid', Context::get('mid'), 'act', '', 'page', Context::get('page'), 'document_srl', $output->get('document_srl')));
 	}
 
 	/**
@@ -430,6 +534,7 @@ class boardController extends board
 		$this->add('page', Context::get('page'));
 		$this->add('document_srl', $output->get('document_srl'));
 		$this->setMessage('success_deleted');
+		$this->setRedirectUrl(getNotEncodedUrl('', 'mid', Context::get('mid'), 'act', '', 'page', Context::get('page'), 'document_srl', $output->get('document_srl')));
 	}
 
 	/**
@@ -526,5 +631,39 @@ class boardController extends board
 		$oMemberController->addMemberPopupMenu($url, 'cmd_view_own_document', '');
 
 		return new Object();
+	}
+	
+	/**
+	 * Create an anonymous nickname.
+	 * 
+	 * @param string $format
+	 * @param int $member_srl
+	 * @param int $document_srl
+	 * @return string
+	 */
+	public function createAnonymousName($format, $member_srl, $document_srl)
+	{
+		if (strpos($format, '$NUM') !== false)
+		{
+			$num = hash_hmac('sha256', $member_srl ?: \RX_CLIENT_IP, config('crypto.authentication_key'));
+			$num = sprintf('%08d', hexdec(substr($num, 0, 8)) % 100000000);
+			return strtr($format, array('$NUM' => $num));
+		}
+		elseif (strpos($format, '$DAILYNUM') !== false)
+		{
+			$num = hash_hmac('sha256', ($member_srl ?: \RX_CLIENT_IP) . ':date:' . date('Y-m-d'), config('crypto.authentication_key'));
+			$num = sprintf('%08d', hexdec(substr($num, 0, 8)) % 100000000);
+			return strtr($format, array('$DAILYNUM' => $num));
+		}
+		elseif (strpos($format, '$DOCNUM') !== false)
+		{
+			$num = hash_hmac('sha256', ($member_srl ?: \RX_CLIENT_IP) . ':document_srl:' . $document_srl, config('crypto.authentication_key'));
+			$num = sprintf('%08d', hexdec(substr($num, 0, 8)) % 100000000);
+			return strtr($format, array('$DOCNUM' => $num));
+		}
+		else
+		{
+			return $format;
+		}
 	}
 }

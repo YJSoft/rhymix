@@ -407,9 +407,10 @@ function getFullSiteUrl()
  *
  * @return string
  */
-function getCurrentPageUrl()
+function getCurrentPageUrl($escape = true)
 {
-	return escape((RX_SSL ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']);
+	$url = Rhymix\Framework\URL::getCurrentURL();
+	return $escape ? escape($url) : $url;
 }
 
 /**
@@ -420,7 +421,7 @@ function getCurrentPageUrl()
  */
 function isSiteID($domain)
 {
-	return preg_match('/^([a-zA-Z0-9\_]+)$/', $domain);
+	return (bool)preg_match('/^([a-zA-Z0-9\_]+)$/', $domain);
 }
 
 /**
@@ -530,8 +531,9 @@ function ztime($str)
 	{
 		$hour = $min = $sec = 0;
 	}
-	$offset = Rhymix\Framework\Config::get('locale.internal_timezone') ?: date('Z');
-	return gmmktime($hour, $min, $sec, $month, $day, $year) - $offset;
+	$timestamp = gmmktime($hour, $min, $sec, $month, $day, $year);
+	$offset = Rhymix\Framework\Config::get('locale.internal_timezone') ?: date('Z', $timestamp);
+	return $timestamp - $offset;
 }
 
 /**
@@ -593,12 +595,38 @@ function zdate($str, $format = 'Y-m-d H:i:s', $conversion = false)
 	// change day and am/pm for each language
 	if(preg_match('/[MFAa]/', $format))
 	{
-		$unit_week = (Array)Context::getLang('unit_week');
-		$unit_meridiem = (Array)Context::getLang('unit_meridiem');
+		$unit_week = (Array)lang('unit_week');
+		$unit_meridiem = (Array)lang('unit_meridiem');
 		$result = str_replace(array('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), $unit_week, $result);
 		$result = str_replace(array('am', 'pm', 'AM', 'PM'), $unit_meridiem, $result);
 	}
 	return $result;
+}
+
+/**
+ * Convert a Unix timestamp to YYYYMMDDHHIISS format, using the internal time zone.
+ * If the timestamp is not given, the current time is used.
+ * 
+ * @param int $timestamp Unix timestamp
+ * @return string
+ */
+function getInternalDateTime($timestamp = null, $format = 'YmdHis')
+{
+	$timestamp = ($timestamp !== null) ? $timestamp : time();
+	return Rhymix\Framework\DateTime::formatTimestamp($format, $timestamp);
+}
+
+/**
+ * Convert a Unix timestamp to YYYYMMDDHHIISS format, using the internal time zone.
+ * If the timestamp is not given, the current time is used.
+ * 
+ * @param int $timestamp Unix timestamp
+ * @return string
+ */
+function getDisplayDateTime($timestamp = null, $format = 'YmdHis')
+{
+	$timestamp = ($timestamp !== null) ? $timestamp : time();
+	return Rhymix\Framework\DateTime::formatTimestampForCurrentUser($format, $timestamp);
 }
 
 /**
@@ -610,24 +638,24 @@ function zdate($str, $format = 'Y-m-d H:i:s', $conversion = false)
  */
 function getTimeGap($date, $format = 'Y.m.d')
 {
-	$gap = $_SERVER['REQUEST_TIME'] + zgap() - ztime($date);
+	$gap = RX_TIME - ztime($date);
 
-	$lang_time_gap = Context::getLang('time_gap');
-	if($gap < 60)
+	$lang_time_gap = lang('time_gap');
+	if($gap < 60 * 1.5)
 	{
-		$buff = sprintf($lang_time_gap['min'], (int)($gap / 60) + 1);
+		$buff = sprintf($lang_time_gap['min'], round($gap / 60));
 	}
 	elseif($gap < 60 * 60)
 	{
-		$buff = sprintf($lang_time_gap['mins'], (int)($gap / 60) + 1);
+		$buff = sprintf($lang_time_gap['mins'], round($gap / 60));
 	}
-	elseif($gap < 60 * 60 * 2)
+	elseif($gap < 60 * 60 * 1.5)
 	{
-		$buff = sprintf($lang_time_gap['hour'], (int)($gap / 60 / 60) + 1);
+		$buff = sprintf($lang_time_gap['hour'], round($gap / 60 / 60));
 	}
 	elseif($gap < 60 * 60 * 24)
 	{
-		$buff = sprintf($lang_time_gap['hours'], (int)($gap / 60 / 60) + 1);
+		$buff = sprintf($lang_time_gap['hours'], round($gap / 60 / 60));
 	}
 	else
 	{
@@ -668,100 +696,14 @@ function getEncodeEmailAddress($email)
 }
 
 /**
- * Prints debug messages 
+ * Add an entry to the debug log.
  *
- * Display $buff contents into the file ./files/_debug_message.php.
- * You can see the file on your prompt by command: tail-f./files/_debug_message.php
- *
- * @param mixed $debug_output Target object to be printed
- * @param bool $display_option boolean Flag whether to print seperator (default:true)
- * @param string $file Target file name
+ * @param mixed $entry Target object to be printed
  * @return void
  */
-function debugPrint($debug_output = NULL, $display_option = TRUE, $file = '_debug_message.php')
+function debugPrint($entry = null)
 {
-	static $debug_file;
-	static $debug_file_exist;
-
-	if(!(__DEBUG__ & 1))
-	{
-		return;
-	}
-
-	static $firephp;
-	$bt = debug_backtrace();
-	if(is_array($bt))
-	{
-		$bt_debug_print = array_shift($bt);
-		$bt_called_function = array_shift($bt);
-	}
-	$file_name = str_replace(_XE_PATH_, '', $bt_debug_print['file']);
-	$line_num = $bt_debug_print['line'];
-	$function = $bt_called_function['class'] . $bt_called_function['type'] . $bt_called_function['function'];
-
-	if(__DEBUG_OUTPUT__ == 2 && version_compare(PHP_VERSION, '6.0.0') === -1)
-	{
-		if(!isset($firephp))
-		{
-			$firephp = FirePHP::getInstance(TRUE);
-		}
-		$type = FirePHP::INFO;
-
-		$label = sprintf('[%s:%d] %s() (Memory usage: current=%s, peak=%s)', $file_name, $line_num, $function, FileHandler::filesize(memory_get_usage()), FileHandler::filesize(memory_get_peak_usage()));
-
-		// Check a FirePHP option
-		if($display_option === 'TABLE')
-		{
-			$label = $display_option;
-		}
-		if($display_option === 'ERROR')
-		{
-			$type = $display_option;
-		}
-		// Check if the IP specified by __DEBUG_PROTECT__ option is same as the access IP.
-		if(__DEBUG_PROTECT__ === 1 && __DEBUG_PROTECT_IP__ != $_SERVER['REMOTE_ADDR'])
-		{
-			$debug_output = 'The IP address is not allowed. Change the value of __DEBUG_PROTECT_IP__ into your IP address in config/config.user.inc.php or config/config.inc.php';
-			$label = NULL;
-		}
-
-		$firephp->fb($debug_output, $label, $type);
-	}
-	else
-	{
-		if(__DEBUG_PROTECT__ === 1 && __DEBUG_PROTECT_IP__ != $_SERVER['REMOTE_ADDR'])
-		{
-			return;
-		}
-
-		$print = array();
-		if($debug_file_exist === NULL) $print[] = '<?php exit() ?>';
-
-		if(!$debug_file) $debug_file =  _XE_PATH_ . 'files/' . $file;
-		if(!$debug_file_exist) $debug_file_exist = file_exists($debug_file);
-
-		if($display_option === TRUE || $display_option === 'ERROR')
-		{
-			$print[] = str_repeat('=', 80);
-		}
-
-		$print[] = sprintf("[%s %s:%d] %s() - mem(%s)", date('Y-m-d H:i:s'), $file_name, $line_num, $function, FileHandler::filesize(memory_get_usage()));
-
-		$type = gettype($debug_output);
-		if(!in_array($type, array('array', 'object', 'resource')))
-		{
-			if($display_option === 'ERROR') $print[] = 'ERROR : ' . var_export($debug_output, TRUE);
-			else $print[] = $type . '(' . var_export($debug_output, TRUE) . ')';
-			$print[] = PHP_EOL.PHP_EOL;
-		}
-		else
-		{
-			$print[] = print_r($debug_output, TRUE);
-			$print[] = PHP_EOL;
-		}
-
-		@file_put_contents($debug_file, implode(PHP_EOL, $print), FILE_APPEND|LOCK_EX);
-	}
+	Rhymix\Framework\Debug::addEntry($entry);
 }
 
 /**
@@ -771,64 +713,7 @@ function debugPrint($debug_output = NULL, $display_option = TRUE, $file = '_debu
  */
 function writeSlowlog($type, $elapsed_time, $obj)
 {
-	if(!__LOG_SLOW_TRIGGER__ && !__LOG_SLOW_ADDON__ && !__LOG_SLOW_WIDGET__ && !__LOG_SLOW_QUERY__) return;
-	if(__LOG_SLOW_PROTECT__ === 1 &&  __LOG_SLOW_PROTECT_IP__ != $_SERVER['REMOTE_ADDR']) return;
-
-	static $log_filename = array(
-		'query' => 'files/_slowlog_query.php',
-		'trigger' => 'files/_slowlog_trigger.php',
-		'addon' => 'files/_slowlog_addon.php',
-		'widget' => 'files/_slowlog_widget.php'
-	);
-	$write_file = true;
-
-	$log_file = _XE_PATH_ . $log_filename[$type];
-
-	$buff = array();
-	$buff[] = '<?php exit(); ?>';
-	$buff[] = date('c');
-
-	if($type == 'trigger' && __LOG_SLOW_TRIGGER__ > 0 && $elapsed_time > __LOG_SLOW_TRIGGER__)
-	{
-		$buff[] = "\tCaller : " . $obj->caller;
-		$buff[] = "\tCalled : " . $obj->called;
-	}
-	else if($type == 'addon' && __LOG_SLOW_ADDON__ > 0 && $elapsed_time > __LOG_SLOW_ADDON__)
-	{
-		$buff[] = "\tAddon : " . $obj->called;
-		$buff[] = "\tCalled position : " . $obj->caller;
-	}
-	else if($type == 'widget' && __LOG_SLOW_WIDGET__ > 0 && $elapsed_time > __LOG_SLOW_WIDGET__)
-	{
-		$buff[] = "\tWidget : " . $obj->called;
-	}
-	else if($type == 'query' && __LOG_SLOW_QUERY__ > 0 && $elapsed_time > __LOG_SLOW_QUERY__)
-	{
-
-		$buff[] = $obj->query;
-		$buff[] = "\tQuery ID   : " . $obj->query_id;
-		$buff[] = "\tCaller     : " . $obj->caller;
-		$buff[] = "\tConnection : " . $obj->connection;
-	}
-	else
-	{
-		$write_file = false;
-	}
-
-	if($write_file)
-	{
-		$buff[] = sprintf("\t%0.6f sec", $elapsed_time);
-		$buff[] = PHP_EOL . PHP_EOL;
-		file_put_contents($log_file, implode(PHP_EOL, $buff), FILE_APPEND);
-	}
-
-	if($type != 'query')
-	{
-		$trigger_args = $obj;
-		$trigger_args->_log_type = $type;
-		$trigger_args->_elapsed_time = $elapsed_time;
-		ModuleHandler::triggerCall('XE.writeSlowlog', 'after', $trigger_args);
-	}
+	// no-op
 }
 
 /**
@@ -836,10 +721,7 @@ function writeSlowlog($type, $elapsed_time, $obj)
  */
 function flushSlowlog()
 {
-	$trigger_args = new stdClass();
-	$trigger_args->_log_type = 'flush';
-	$trigger_args->_elapsed_time = 0;
-	ModuleHandler::triggerCall('XE.writeSlowlog', 'after', $trigger_args);
+	// no-op
 }
 
 /**
@@ -891,7 +773,7 @@ function getDestroyXeVars($vars)
 }
 
 /**
- * Change error_handing to debugPrint on php5 higher 
+ * Legacy error handler
  *
  * @param int $errno
  * @param string $errstr
@@ -899,22 +781,9 @@ function getDestroyXeVars($vars)
  * @param int $line
  * @return void
  */
-function handleError($errno, $errstr, $file, $line)
+function handleError($errno, $errstr, $file, $line, $context)
 {
-	if(!__DEBUG__)
-	{
-		return;
-	}
-	$errors = array(E_USER_ERROR, E_ERROR, E_PARSE);
-	if(!in_array($errno, $errors))
-	{
-		return;
-	}
-
-	$output = sprintf("Fatal error : %s - %d", $file, $line);
-	$output .= sprintf("%d - %s", $errno, $errstr);
-
-	debugPrint($output);
+	Rhymix\Framework\Debug::addError($errno, $errstr, $file, $line, $context);
 }
 
 /**
@@ -945,197 +814,70 @@ function url_decode($str)
 	return htmlspecialchars(utf8RawUrlDecode($str), null, 'UTF-8');
 }
 
-function purifierHtml(&$content)
-{
-	$oPurifier = Purifier::getInstance();
-	$oPurifier->purify($content);
-}
-
 /**
- * Pre-block the codes which may be hacking attempts
+ * Sanitize HTML content.
  *
- * @param string $content Taget content
+ * @param string $content Target content
  * @return string
  */
 function removeHackTag($content)
 {
-	$oEmbedFilter = EmbedFilter::getInstance();
-	$oEmbedFilter->check($content);
-
-	purifierHtml($content);
-
-	// change the specific tags to the common texts
-	$content = preg_replace('@<(\/?(?:html|body|head|title|meta|base|link|script|style|applet)(/*).*?>)@i', '&lt;$1', $content);
-
-	/**
-	 * Remove codes to abuse the admin session in src by tags of imaages and video postings
-	 * - Issue reported by Sangwon Kim
-	 */
-	$content = preg_replace_callback('@<(/?)([a-z]+[0-9]?)((?>"[^"]*"|\'[^\']*\'|[^>])*?\b(?:on[a-z]+|data|style|background|href|(?:dyn|low)?src)\s*=[\s\S]*?)(/?)($|>|<)@i', 'removeSrcHack', $content);
-
-	$content = checkXmpTag($content);
-	$content = blockWidgetCode($content);
-
-	return $content;
+	return Rhymix\Framework\Filters\HTMLFilter::clean($content);
 }
 
 /**
- * blocking widget code
+ * HTMLPurifier wrapper (Deprecated)
  *
- * @param string $content Taget content
+ * @param string &$content Target content
  * @return string
- **/
-function blockWidgetCode($content)
-{
-	$content = preg_replace('/(<(?:img|div)(?:[^>]*))(widget)(?:(=([^>]*?)>))/is', '$1blocked-widget$3', $content);
-
-	return $content;
-}
-
-/**
- * check uploaded file which may be hacking attempts
- *
- * @param string $file Taget file path
- * @return bool
  */
-function checkUploadedFile($file)
+function purifierHtml(&$content)
 {
-	return UploadFileFilter::check($file);
+	$content = Rhymix\Framework\Filters\HTMLFilter::clean($content);
 }
 
 /**
- * Check xmp tag, close it.
+ * Check xmp tag (Deprecated)
  *
  * @param string $content Target content
  * @return string
  */
 function checkXmpTag($content)
 {
-	$content = preg_replace('@<(/?)xmp.*?>@i', '<\1xmp>', $content);
-
-	if(($start_xmp = strrpos($content, '<xmp>')) !== FALSE)
-	{
-		if(($close_xmp = strrpos($content, '</xmp>')) === FALSE)
-		{
-			$content .= '</xmp>';
-		}
-		else if($close_xmp < $start_xmp)
-		{
-			$content .= '</xmp>';
-		}
-	}
-
 	return $content;
 }
 
 /**
- * Remove src hack(preg_replace_callback)
+ * Block widget code (Deprecated)
+ *
+ * @param string $content Taget content
+ * @return string
+ **/
+function blockWidgetCode($content)
+{
+	return preg_replace('/(<(?:img|div)(?:[^>]*))(widget)(?:(=([^>]*?)>))/is', '$1blocked-widget$3', $content);
+}
+
+/**
+ * Remove src hack (Deprecated)
  *
  * @param array $match
  * @return string
  */
 function removeSrcHack($match)
 {
-	$tag = strtolower($match[2]);
+	return $match[0];
+}
 
-	// xmp tag ?뺣━
-	if($tag == 'xmp')
-	{
-		return "<{$match[1]}xmp>";
-	}
-	if($match[1])
-	{
-		return $match[0];
-	}
-	if($match[4])
-	{
-		$match[4] = ' ' . $match[4];
-	}
-
-	$attrs = array();
-	if(preg_match_all('/([\w:-]+)\s*=(?:\s*(["\']))?(?(2)(.*?)\2|([^ ]+))/s', $match[3], $m))
-	{
-		foreach($m[1] as $idx => $name)
-		{
-			if(strlen($name) >= 2 && substr_compare($name, 'on', 0, 2) === 0)
-			{
-				continue;
-			}
-
-			$val = preg_replace_callback('/&#(?:x([a-fA-F0-9]+)|0*(\d+));/', function($n) {return chr($n[1] ? ('0x00' . $n[1]) : ($n[2] + 0)); }, $m[3][$idx] . $m[4][$idx]);
-			$val = preg_replace('/^\s+|[\t\n\r]+/', '', $val);
-
-			if(preg_match('/^[a-z]+script:/i', $val))
-			{
-				continue;
-			}
-
-			$attrs[$name] = $val;
-		}
-	}
-
-	//Remove ACT URL (CSRF)
-	$except_act = array('procFileDownload');
-	$block_act = array('dispMemberLogout', 'dispLayoutPreview');
-
-	$filter_arrts = array('style', 'src', 'href');
-	if($tag === 'object') array_push($filter_arrts, 'data');
-	if($tag === 'param') array_push($filter_arrts, 'value');
-
-	foreach($filter_arrts as $attr)
-	{
-		if(!isset($attrs[$attr])) continue;
-
-		$attr_value = rawurldecode($attrs[$attr]);
-		$attr_value = htmlspecialchars_decode($attr_value, ENT_COMPAT);
-		$attr_value = preg_replace('/\s+|[\t\n\r]+/', '', $attr_value);
-
-		preg_match('@(\?|&|;)act=(disp|proc)([^&]*)@i', $attr_value, $actmatch);
-		$url_action = $actmatch[2].$actmatch[3];
-
-		if(!empty($url_action) && !in_array($url_action, $except_act))
-		{
-			if($actmatch[2] == 'proc' || in_array($url_action, $block_act))
-			{
-				unset($attrs[$attr]);
-			}
-		}
-	}
-
-	if(isset($attrs['style']) && preg_match('@(?:/\*|\*/|\n|:\s*expression\s*\()@i', $attrs['style']))
-	{
-		unset($attrs['style']);
-	}
-
-	$attr = array();
-	foreach($attrs as $name => $val)
-	{
-		if($tag == 'object' || $tag == 'embed' || $tag == 'a')
-		{
-			$attribute = strtolower(trim($name));
-			if($attribute == 'data' || $attribute == 'src' || $attribute == 'href')
-			{
-				if(stripos($val, 'data:') === 0)
-				{
-					continue;
-				}
-			}
-		}
-
-		if($tag == 'img')
-		{
-			$attribute = strtolower(trim($name));
-			if(stripos($val, 'data:') === 0)
-			{
-				continue;
-			}
-		}
-		$val = str_replace('"', '&quot;', $val);
-		$attr[] = $name . "=\"{$val}\"";
-	}
-	$attr = count($attr) ? ' ' . implode(' ', $attr) : '';
-
-	return "<{$match[1]}{$tag}{$attr}{$match[4]}>";
+/**
+ * Check uploaded file (Deprecated)
+ *
+ * @param string $file Taget file path
+ * @return bool
+ */
+function checkUploadedFile($file)
+{
+	return true;
 }
 
 /**
@@ -1182,7 +924,7 @@ function getScriptPath()
  */
 function getRequestUriByServerEnviroment()
 {
-	return str_replace('<', '&lt;', $_SERVER['REQUEST_URI']);
+	return escape($_SERVER['REQUEST_URI']);
 }
 
 /**
@@ -1257,8 +999,7 @@ function json_encode2($data)
  */
 function isCrawler($agent = NULL)
 {
-	$agent = $agent ?: $_SERVER['HTTP_USER_AGENT'];
-	return (bool)preg_match('@bot|crawl|sp[iy]der|https?://|google|yahoo|slurp|yeti|daum|teoma|fish|hanrss|facebook|yandex|infoseek|askjeeves|stackrambler@i', $agent);
+	return Rhymix\Framework\UA::isRobot($agent);
 }
 
 /**
@@ -1270,29 +1011,31 @@ function isCrawler($agent = NULL)
  */
 function stripEmbedTagForAdmin(&$content, $writer_member_srl)
 {
-	if(!Context::get('is_logged'))
+	if (!Context::get('is_logged'))
 	{
 		return;
 	}
-
-	$oModuleModel = getModel('module');
+	
 	$logged_info = Context::get('logged_info');
-
-	if($writer_member_srl != $logged_info->member_srl && ($logged_info->is_admin == "Y" || $oModuleModel->isSiteAdmin($logged_info)))
+	if ($logged_info->member_srl == $writer_member_srl)
 	{
-		if($writer_member_srl)
+		return;
+	}
+	
+	if ($logged_info->is_admin === 'Y' || getModel('module')->isSiteAdmin($logged_info))
+	{
+		if ($writer_member_srl)
 		{
-			$oMemberModel = getModel('member');
-			$member_info = $oMemberModel->getMemberInfoByMemberSrl($writer_member_srl);
-			if($member_info->is_admin == "Y")
+			$member_info = getModel('member')->getMemberInfoByMemberSrl($writer_member_srl);
+			if ($member_info && $member_info->is_admin === 'Y')
 			{
 				return;
 			}
 		}
-		$security_msg = "<div style='border: 1px solid #DDD; background: #FAFAFA; text-align:center; margin: 1em 0;'><p style='margin: 1em;'>" . Context::getLang('security_warning_embed') . "</p></div>";
-		$content = preg_replace('/<object[^>]+>(.*?<\/object>)?/is', $security_msg, $content);
-		$content = preg_replace('/<embed[^>]+>(\s*<\/embed>)?/is', $security_msg, $content);
-		$content = preg_replace('/<img[^>]+editor_component="multimedia_link"[^>]*>(\s*<\/img>)?/is', $security_msg, $content);
+		
+		$security_msg = '<div style="border: 1px solid #DDD; background: #FAFAFA; text-align:center; margin: 1em 0;">' .
+			'<p style="margin: 1em;">' . lang('security_warning_embed') . '</p></div>';
+		$content = Rhymix\Framework\Filters\MediaFilter::removeEmbeddedMedia($content, $security_msg);
 	}
 
 	return;
@@ -1315,42 +1058,24 @@ function requirePear()
  */
 function checkCSRF()
 {
-	if($_SERVER['REQUEST_METHOD'] != 'POST')
+	// Use Rhymix Security class first.
+	if (Rhymix\Framework\Security::checkCSRF())
 	{
-		return FALSE;
+		return true;
 	}
-
-	$default_url = Context::getDefaultUrl();
-	$referer = $_SERVER["HTTP_REFERER"];
-
-	if(strpos($default_url, 'xn--') !== FALSE && strpos($referer, 'xn--') === FALSE)
-	{
-		$referer = Context::encodeIdna($referer);
-	}
-
-	$default_url = parse_url($default_url);
-	$referer = parse_url($referer);
-
+	
+	// Check if we have a virtual site with a matching domain.
 	$oModuleModel = getModel('module');
 	$siteModuleInfo = $oModuleModel->getDefaultMid();
-
-	if($siteModuleInfo->site_srl == 0)
+	$virtualSiteInfo = $oModuleModel->getSiteInfo($siteModuleInfo->site_srl);
+	if (strcasecmp($virtualSiteInfo->domain, Context::get('vid')) && stristr($virtualSiteInfo->domain, $referer_host))
 	{
-		if($default_url['host'] !== $referer['host'])
-		{
-			return FALSE;
-		}
+		return true;
 	}
 	else
 	{
-		$virtualSiteInfo = $oModuleModel->getSiteInfo($siteModuleInfo->site_srl);
-		if(strtolower($virtualSiteInfo->domain) != strtolower(Context::get('vid')) && !strstr(strtolower($virtualSiteInfo->domain), strtolower($referer['host'])))
-		{
-			return FALSE;
-		}
+		return false;
 	}
-
-	return TRUE;
 }
 
 /**

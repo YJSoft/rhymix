@@ -44,7 +44,7 @@ class memberModel extends member
 		//for multi language
 		foreach($config->signupForm AS $key=>$value)
 		{
-			$config->signupForm[$key]->title = ($value->isDefaultForm) ? Context::getLang($value->name) : $value->title;
+			$config->signupForm[$key]->title = ($value->isDefaultForm) ? lang($value->name) : $value->title;
 			if($config->signupForm[$key]->isPublic != 'N') $config->signupForm[$key]->isPublic = 'Y';
 			if($value->name == 'find_account_question') $config->signupForm[$key]->isPublic = 'N';
 		}
@@ -155,10 +155,14 @@ class memberModel extends member
 			}
 
 			// Send an email only if email address is public
-			if(($logged_info->is_admin == 'Y' || $email_config->isPublic == 'Y') && $member_info->email_address)
+			if($email_config->isPublic == 'Y' && $member_info->email_address)
 			{
-				$url = 'mailto:'.htmlspecialchars($member_info->email_address, ENT_COMPAT | ENT_HTML401, 'UTF-8', false);
-				$oMemberController->addMemberPopupMenu($url,'cmd_send_email',$icon_path);
+				$oCommunicationModel = getModel('communication');
+				if($logged_info->is_admin == 'Y' || $oCommunicationModel->isFriend($member_info->member_srl))
+				{
+					$url = 'mailto:'.htmlspecialchars($member_info->email_address, ENT_COMPAT | ENT_HTML401, 'UTF-8', false);
+					$oMemberController->addMemberPopupMenu($url,'cmd_send_email',$icon_path);
+				}
 			}
 		}
 		// View homepage info
@@ -186,7 +190,7 @@ class memberModel extends member
 		$menus_count = count($menus);
 		for($i=0;$i<$menus_count;$i++)
 		{
-			$menus[$i]->str = Context::getLang($menus[$i]->str);
+			$menus[$i]->str = lang($menus[$i]->str);
 		}
 		// Get a list of finalized pop-up menu
 		$this->add('menus', $menus);
@@ -322,31 +326,21 @@ class memberModel extends member
 		//columnList size zero... get full member info
 		if(!$GLOBALS['__member_info__'][$member_srl] || count($columnList) == 0)
 		{
-			$GLOBALS['__member_info__'][$member_srl] = false;
-
-			$oCacheHandler = CacheHandler::getInstance('object');
-			if($oCacheHandler->isSupport())
-			{
-				$columnList = array();
-				$object_key = 'member_info:' . getNumberingPath($member_srl) . $member_srl;
-				$cache_key = $oCacheHandler->getGroupKey('member', $object_key);
-				$GLOBALS['__member_info__'][$member_srl] = $oCacheHandler->get($cache_key);
-			}
-
-			if($GLOBALS['__member_info__'][$member_srl] === false)
+			$cache_key = 'member:member_info:' . getNumberingPath($member_srl) . $member_srl;
+			$GLOBALS['__member_info__'][$member_srl] = Rhymix\Framework\Cache::get($cache_key);
+			if(!$GLOBALS['__member_info__'][$member_srl])
 			{
 				$args = new stdClass();
 				$args->member_srl = $member_srl;
 				$output = executeQuery('member.getMemberInfoByMemberSrl', $args, $columnList);
 				if(!$output->data)
 				{
-					if($oCacheHandler->isSupport()) $oCacheHandler->put($cache_key, new stdClass);
+					Rhymix\Framework\Cache::set($cache_key, new stdClass);
 					return new stdClass;
 				}
+				
 				$this->arrangeMemberInfo($output->data, $site_srl);
-
-				//insert in cache
-				if($oCacheHandler->isSupport()) $oCacheHandler->put($cache_key, $GLOBALS['__member_info__'][$member_srl]);
+				Rhymix\Framework\Cache::set($cache_key, $GLOBALS['__member_info__'][$member_srl]);
 			}
 		}
 
@@ -362,7 +356,6 @@ class memberModel extends member
 		{
 			$oModuleModel = getModel('module');
 			$config = $oModuleModel->getModuleConfig('member');
-
 
 			$info->profile_image = $this->getProfileImage($info->member_srl);
 			$info->image_name = $this->getImageName($info->member_srl);
@@ -490,18 +483,12 @@ class memberModel extends member
 		static $member_groups = array();
 
 		// cache controll
-		$group_list = false;
-		$oCacheHandler = CacheHandler::getInstance('object', null, true);
-		if($oCacheHandler->isSupport())
-		{
-			$object_key = 'member_groups:' . getNumberingPath($member_srl) . $member_srl . '_'.$site_srl;
-			$cache_key = $oCacheHandler->getGroupKey('member', $object_key);
-			$group_list = $oCacheHandler->get($cache_key);
-		}
+		$cache_key = 'member:member_groups:' . getNumberingPath($member_srl) . $member_srl . ':site:' . $site_srl;
+		$group_list = Rhymix\Framework\Cache::get($cache_key);
 
 		if(!$member_groups[$member_srl][$site_srl] || $force_reload)
 		{
-			if($group_list === false)
+			if(!$group_list)
 			{
 				$args = new stdClass();
 				$args->member_srl = $member_srl;
@@ -509,7 +496,7 @@ class memberModel extends member
 				$output = executeQueryArray('member.getMemberGroups', $args);
 				$group_list = $output->data;
 				//insert in cache
-				if($oCacheHandler->isSupport()) $oCacheHandler->put($cache_key, $group_list);
+				Rhymix\Framework\Cache::set($cache_key, $group_list, 0, true);
 			}
 			if(!$group_list) return array();
 
@@ -546,26 +533,15 @@ class memberModel extends member
 	 */
 	function getDefaultGroup($site_srl = 0, $columnList = array())
 	{
-		$default_group = false;
-		$oCacheHandler = CacheHandler::getInstance('object', null, true);
-		if($oCacheHandler->isSupport())
-		{
-			$columnList = array();
-			$object_key = 'default_group_' . $site_srl;
-			$cache_key = $oCacheHandler->getGroupKey('member', $object_key);
-			$default_group = $oCacheHandler->get($cache_key);
-		}
+		$default_group = Rhymix\Framework\Cache::get("member:default_group:$site_srl");
 
-		if($default_group === false)
+		if(!$default_group)
 		{
 			$args = new stdClass();
 			$args->site_srl = $site_srl;
 			$output = executeQuery('member.getDefaultGroup', $args, $columnList);
 			$default_group = $output->data;
-			if($oCacheHandler->isSupport())
-			{
-				$oCacheHandler->put($cache_key, $default_group);
-			}
+			Rhymix\Framework\Cache::set("member:default_group:$site_srl", $default_group, 0, true);
 		}
 
 		return $default_group;
@@ -605,16 +581,9 @@ class memberModel extends member
 				$site_srl = 0;
 			}
 
-			$group_list = false;
-			$oCacheHandler = CacheHandler::getInstance('object', null, true);
-			if($oCacheHandler->isSupport())
-			{
-				$object_key = 'member_groups:site_'.$site_srl;
-				$cache_key = $oCacheHandler->getGroupKey('member', $object_key);
-				$group_list = $oCacheHandler->get($cache_key);
-			}
+			$group_list = Rhymix\Framework\Cache::get("member:member_groups:site:$site_srl");
 
-			if($group_list === false)
+			if(!$group_list)
 			{
 				$args = new stdClass();
 				$args->site_srl = $site_srl;
@@ -622,15 +591,13 @@ class memberModel extends member
 				$args->order_type = 'asc';
 				$output = executeQueryArray('member.getGroups', $args);
 				$group_list = $output->data;
-				//insert in cache
-				if($oCacheHandler->isSupport()) $oCacheHandler->put($cache_key, $group_list);
+				Rhymix\Framework\Cache::set("member:member_groups:site:$site_srl", $group_list, 0, true);
 			}
 
 			if(!$group_list)
 			{
 				return array();
 			}
-
 
 			foreach($group_list as $val)
 			{
@@ -1047,6 +1014,14 @@ class memberModel extends member
 							$info->title = $group_info->title;
 							$info->description = $group_info->description;
 							$info->src = $group_info->image_mark;
+							if(preg_match('@^https?://@', $info->src))
+							{
+								$localpath = str_replace('/./', '/', parse_url($info->src, PHP_URL_PATH));
+								if(file_exists($_SERVER['DOCUMENT_ROOT'] . $localpath))
+								{
+									$info->src = $localpath . '?' . date('YmdHis', filemtime($_SERVER['DOCUMENT_ROOT'] . $localpath));
+								}
+							}
 							$GLOBALS['__member_info__']['group_image_mark'][$member_srl] = $info;
 							break;
 						}
@@ -1095,10 +1070,19 @@ class memberModel extends member
 		}
 		
 		// Check the password
-		$oPassword = new Password();
-		$current_algorithm = $oPassword->checkAlgorithm($hashed_password);
-		$match = $oPassword->checkPassword($password_text, $hashed_password, $current_algorithm);
-		if(!$match)
+		$password_match = false;
+		$current_algorithm = false;
+		$possible_algorithms = Rhymix\Framework\Password::checkAlgorithm($hashed_password);
+		foreach ($possible_algorithms as $algorithm)
+		{
+			if (Rhymix\Framework\Password::checkPassword($password_text, $hashed_password, $algorithm))
+			{
+				$password_match = true;
+				$current_algorithm = $algorithm;
+				break;
+			}
+		}
+		if (!$password_match)
 		{
 			return false;
 		}
@@ -1107,22 +1091,26 @@ class memberModel extends member
 		$config = $this->getMemberConfig();
 		if($member_srl > 0 && $config->password_hashing_auto_upgrade != 'N')
 		{
-			$need_upgrade = false;
-			
-			if(!$need_upgrade)
+			$required_algorithm = Rhymix\Framework\Password::getDefaultAlgorithm();
+			if ($required_algorithm !== $current_algorithm)
 			{
-				$required_algorithm = $oPassword->getCurrentlySelectedAlgorithm();
-				if($required_algorithm !== $current_algorithm) $need_upgrade = true;
+				$need_upgrade = true;
+			}
+			else
+			{
+				$required_work_factor = Rhymix\Framework\Password::getWorkFactor();
+				$current_work_factor = Rhymix\Framework\Password::checkWorkFactor($hashed_password);
+				if ($current_work_factor !== false && $required_work_factor > $current_work_factor)
+				{
+					$need_upgrade = true;
+				}
+				else
+				{
+					$need_upgrade = false;
+				}
 			}
 			
-			if(!$need_upgrade)
-			{
-				$required_work_factor = $oPassword->getWorkFactor();
-				$current_work_factor = $oPassword->checkWorkFactor($hashed_password);
-				if($current_work_factor !== false && $required_work_factor > $current_work_factor) $need_upgrade = true;
-			}
-			
-			if($need_upgrade === true)
+			if ($need_upgrade)
 			{
 				$args = new stdClass();
 				$args->member_srl = $member_srl;
@@ -1143,8 +1131,7 @@ class memberModel extends member
 	 */
 	function hashPassword($password_text, $algorithm = null)
 	{
-		$oPassword = new Password();
-		return $oPassword->createHash($password_text, $algorithm);
+		return Rhymix\Framework\Password::hashPassword($password_text, $algorithm);
 	}
 	
 	function checkPasswordStrength($password, $strength)
@@ -1193,6 +1180,16 @@ class memberModel extends member
 			}
 		}
 		return $groupSrl;
+	}
+	
+	function getMemberModifyNicknameLog($page = 1, $member_srl = null)
+	{
+		$args = new stdClass();
+		$args->member_srl = $member_srl;
+		$args->page = $page;
+		$output = executeQueryArray('member.getMemberModifyNickName', $args);
+		
+		return $output;
 	}
 }
 /* End of file member.model.php */

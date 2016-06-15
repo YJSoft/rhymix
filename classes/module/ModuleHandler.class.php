@@ -86,7 +86,7 @@ class ModuleHandler extends Handler
 		if($isInvalid)
 		{
 			htmlHeader();
-			echo Context::getLang("msg_invalid_request");
+			echo lang("msg_invalid_request");
 			htmlFooter();
 			Context::close();
 			exit;
@@ -96,10 +96,13 @@ class ModuleHandler extends Handler
 		{
 			if(Context::get('_use_ssl') == 'optional' && Context::isExistsSSLAction($this->act) && !RX_SSL)
 			{
-				if(Context::get('_https_port')!=null) {
-					header('location:https://' . $_SERVER['HTTP_HOST'] . ':' . Context::get('_https_port') . $_SERVER['REQUEST_URI']);
-				} else {
-					header('location:https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']);
+				if(Context::get('_https_port') != null)
+				{
+					header('location: https://' . $_SERVER['HTTP_HOST'] . ':' . Context::get('_https_port') . $_SERVER['REQUEST_URI']);
+				}
+				else
+				{
+					header('location: https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']);
 				}
 				return;
 			}
@@ -133,23 +136,22 @@ class ModuleHandler extends Handler
 				continue;
 			}
 			
-			$urlInfo = parse_url($url);
-			$host = $urlInfo['host'];
-			
-			$defaultUrl = Context::getDefaultUrl();
-			if($defaultUrl)
+			if($host = parse_url($url, PHP_URL_HOST))
 			{
-				$defaultUrlInfo = parse_url($defaultUrl);
-				$defaultHost = $defaultUrlInfo['host'];
-			}
-			else
-			{
-				$defaultHost = $_SERVER['HTTP_HOST'];
-			}
-			
-			if($host && ($host != $defaultHost && $host != $site_module_info->domain))
-			{
-				throw new Exception('msg_default_url_is_null');
+				$defaultHost = parse_url(Context::getDefaultUrl(), PHP_URL_HOST);
+				if($host !== $defaultHost)
+				{
+					$siteModuleHost = $site_module_info->domain;
+					if(strpos($siteModuleHost, '/') !== false)
+					{
+						$siteModuleHost = parse_url($siteModuleHost, PHP_URL_HOST);
+					}
+					if($host !== $siteModuleHost)
+					{
+						Context::set('success_return_url', null);
+						Context::set('error_return_url', null);
+					}
+				}
 			}
 		}
 		
@@ -166,12 +168,21 @@ class ModuleHandler extends Handler
 		// Get module's information based on document_srl, if it's specified
 		if($this->document_srl)
 		{
-			
 			$module_info = $oModuleModel->getModuleInfoByDocumentSrl($this->document_srl);
+			
 			// If the document does not exist, remove document_srl
 			if(!$module_info)
 			{
-				unset($this->document_srl);
+				if(Context::getRequestMethod() == 'GET')
+				{
+					$this->error = 'The document does not exist';
+					$this->httpStatusCode = '404';
+					return true;
+				}
+				else
+				{
+					unset($this->document_srl);
+				}
 			}
 			else
 			{
@@ -179,27 +190,38 @@ class ModuleHandler extends Handler
 				// if mids are not matching, set it as the document's mid
 				if(!$this->mid || ($this->mid != $module_info->mid))
 				{
-					
 					if(Context::getRequestMethod() == 'GET')
 					{
-						$this->mid = $module_info->mid;
-						header('location:' . getNotEncodedSiteUrl($site_module_info->domain, 'mid', $this->mid, 'document_srl', $this->document_srl));
-						return FALSE;
+						Context::setCacheControl(0);
+						header('location: ' . getNotEncodedSiteUrl($site_module_info->domain, 'mid', $module_info->mid, 'document_srl', $this->document_srl), true, 301);
+						return false;
 					}
 					else
 					{
 						$this->mid = $module_info->mid;
 						Context::set('mid', $this->mid);
 					}
-					
 				}
 				// if requested module is different from one of the document, remove the module information retrieved based on the document number
 				if($this->module && $module_info->module != $this->module)
 				{
 					unset($module_info);
 				}
+				
+				// if the secret document permission does not have, specify HTTP 403
+				if(Context::getRequestMethod() == 'GET')
+				{
+					$oDocumentModel = getModel('document');
+					$oDocument = $oDocumentModel->getDocument($this->document_srl);
+					if($oDocument->isSecret() || $oDocument->get('status') === $oDocumentModel->getConfigStatus('temp'))
+					{
+						if(!$oDocument->isGranted() && !$oDocument->isAccessible())
+						{
+							$this->httpStatusCode = '403';
+						}
+					}
+				}
 			}
-
 		}
 
 		// If module_info is not set yet, and there exists mid information, get module information based on the mid
@@ -212,9 +234,10 @@ class ModuleHandler extends Handler
 		// redirect, if module_site_srl and site_srl are different
 		if(!$this->module && !$module_info && $site_module_info->site_srl == 0 && $site_module_info->module_site_srl > 0)
 		{
+			Context::setCacheControl(0);
 			$site_info = $oModuleModel->getSiteInfo($site_module_info->module_site_srl);
-			header("location:" . getNotEncodedSiteUrl($site_info->domain, 'mid', $site_module_info->mid));
-			return FALSE;
+			header('location: ' . getNotEncodedSiteUrl($site_info->domain, 'mid', $site_module_info->mid), true, 301);
+			return false;
 		}
 
 		// If module_info is not set still, and $module does not exist, find the default module
@@ -229,7 +252,7 @@ class ModuleHandler extends Handler
 		}
 
 		// redirect, if site_srl of module_info is different from one of site's module_info
-		if($module_info && $module_info->site_srl != $site_module_info->site_srl && !isCrawler())
+		if($module_info && $module_info->site_srl != $site_module_info->site_srl && !Rhymix\Framework\UA::isRobot())
 		{
 			// If the module is of virtual site
 			if($module_info->site_srl)
@@ -240,26 +263,63 @@ class ModuleHandler extends Handler
 			}
 			else
 			{
-				if(!Context::getDefaultUrl())
-				{
-					return Context::getLang('msg_default_url_is_not_defined');
-				}
-				else
-				{
-					$redirect_url = getNotEncodedSiteUrl($db_info->default_url, 'mid', Context::get('mid'), 'document_srl', Context::get('document_srl'), 'module_srl', Context::get('module_srl'), 'entry', Context::get('entry'));
-				}
+				$redirect_url = getNotEncodedSiteUrl(Context::getDefaultUrl(), 'mid', Context::get('mid'), 'document_srl', Context::get('document_srl'), 'module_srl', Context::get('module_srl'), 'entry', Context::get('entry'));
 			}
-			header("Location: $redirect_url");
-			return FALSE;
+			
+			Context::setCacheControl(0);
+			header("Location: $redirect_url", true, 301);
+			return false;
 		}
-
+		
+		// redirect, if site start module
+		if(isset($_GET['mid']) && $_GET['mid'] === $site_module_info->mid && count($_GET) === 1)
+		{
+			Context::setCacheControl(0);
+			header('location: ' . getNotEncodedSiteUrl($site_module_info->domain), true, 301);
+			return false;
+		}
+		
 		// If module info was set, retrieve variables from the module information
 		if($module_info)
 		{
 			$this->module = $module_info->module;
 			$this->mid = $module_info->mid;
 			$this->module_info = $module_info;
-			Context::setBrowserTitle($module_info->browser_title);
+			if ($module_info->mid == $site_module_info->mid)
+			{
+				$seo_title = config('seo.main_title') ?: '$SITE_TITLE - $SITE_SUBTITLE';
+			}
+			else
+			{
+				$seo_title = config('seo.subpage_title') ?: '$SITE_TITLE - $SUBPAGE_TITLE';
+			}
+			
+			getController('module')->replaceDefinedLangCode($seo_title);
+			Context::setBrowserTitle($seo_title, array(
+				'site_title' => Context::getSiteTitle(),
+				'site_subtitle' => Context::getSiteSubtitle(),
+				'subpage_title' => $module_info->browser_title,
+				'page' => Context::get('page') ?: 1,
+			));
+			
+			$module_config = $oModuleModel->getModuleConfig('module');
+			if ($module_info->meta_keywords)
+			{
+				Context::addMetaTag('keywords', $module_info->meta_keywords);
+			}
+			elseif($module_config->meta_keywords)
+			{
+				Context::addMetaTag('keywords', $module_config->meta_keywords);
+			}
+			
+			if ($module_info->meta_description)
+			{
+				Context::addMetaTag('description', $module_info->meta_description);
+			}
+			elseif($module_config->meta_description)
+			{
+				Context::addMetaTag('description', $module_config->meta_description);
+			}
 
 			$viewType = (Mobile::isFromMobilePhone()) ? 'M' : 'P';
 			$targetSrl = (Mobile::isFromMobilePhone()) ? 'mlayout_srl' : 'layout_srl';
@@ -298,6 +358,7 @@ class ModuleHandler extends Handler
 		{
 			$this->error = 'msg_module_is_not_exists';
 			$this->httpStatusCode = '404';
+			return true;
 		}
 
 		// If mid exists, set mid into context
@@ -311,13 +372,13 @@ class ModuleHandler extends Handler
 		if(!$output->toBool())
 		{
 			$this->error = $output->getMessage();
-			return TRUE;
+			return true;
 		}
 
 		// Set current module info into context
 		Context::set('current_module_info', $this->module_info);
 
-		return TRUE;
+		return true;
 	}
 
 	/**
@@ -473,7 +534,6 @@ class ModuleHandler extends Handler
 		// If there is no such action in the module object
 		if(!isset($xml_info->action->{$this->act}) || !method_exists($oModule, $this->act))
 		{
-
 			if(!Context::isInstalled())
 			{
 				self::_setInputErrorToContext();
@@ -620,7 +680,7 @@ class ModuleHandler extends Handler
 					{
 						self::_setInputErrorToContext();
 
-						$this->error = 'msg_is_not_administrator';
+						$this->error = 'admin.msg_is_not_administrator';
 						$oMessageObject = self::getModuleInstance('message', $display_mode);
 						$oMessageObject->setError(-1);
 						$oMessageObject->setMessage($this->error);
@@ -634,7 +694,7 @@ class ModuleHandler extends Handler
 					if(!$grant->manager)
 					{
 						self::_setInputErrorToContext();
-						$this->error = 'msg_is_not_manager';
+						$this->error = 'admin.msg_is_not_administrator';
 						$oMessageObject = self::getModuleInstance('message', $display_mode);
 						$oMessageObject->setError(-1);
 						$oMessageObject->setMessage($this->error);
@@ -646,7 +706,7 @@ class ModuleHandler extends Handler
 						if(!$grant->is_admin && $this->module != $this->orig_module->module && $xml_info->permission->{$this->act} != 'manager')
 						{
 							self::_setInputErrorToContext();
-							$this->error = 'msg_is_not_administrator';
+							$this->error = 'admin.msg_is_not_administrator';
 							$oMessageObject = self::getModuleInstance('message', $display_mode);
 							$oMessageObject->setError(-1);
 							$oMessageObject->setMessage($this->error);
@@ -738,8 +798,7 @@ class ModuleHandler extends Handler
 			}
 			if($module_config->siteTitle)
 			{
-				$siteTitle = Context::getBrowserTitle();
-				if(!$siteTitle)
+				if(!Context::getBrowserTitle())
 				{
 					Context::setBrowserTitle($module_config->siteTitle);
 				}
@@ -758,7 +817,6 @@ class ModuleHandler extends Handler
 			$message = $oModule->getMessage();
 			$messageType = $oModule->getMessageType();
 			$redirectUrl = $oModule->getRedirectUrl();
-			if($messageType == 'error') debugPrint($message, 'ERROR');
 
 			if(!$procResult)
 			{
@@ -768,10 +826,6 @@ class ModuleHandler extends Handler
 					$redirectUrl = Context::get('error_return_url');
 				}
 				self::_setInputValueToSession();
-			}
-			else
-			{
-
 			}
 
 			if($error != 0)
@@ -890,14 +944,9 @@ class ModuleHandler extends Handler
 		$methodList = array('XMLRPC' => 1, 'JSON' => 1, 'JS_CALLBACK' => 1);
 		if(!isset($methodList[Context::getRequestMethod()]))
 		{
-
 			if($_SESSION['XE_VALIDATOR_RETURN_URL'])
 			{
-				$display_handler = new DisplayHandler();
-				$display_handler->_debugOutput();
-
-				Context::getInstance()->checkSessionStatus();
-				header('location:' . $_SESSION['XE_VALIDATOR_RETURN_URL']);
+				header('location: ' . $_SESSION['XE_VALIDATOR_RETURN_URL']);
 				return;
 			}
 
@@ -911,24 +960,25 @@ class ModuleHandler extends Handler
 				$oMessageObject->setMessage($this->error);
 				$oMessageObject->dispMessage();
 
-				if($oMessageObject->getHttpStatusCode() && $oMessageObject->getHttpStatusCode() != '200')
+				// display Error Page
+				if(!in_array($oMessageObject->getHttpStatusCode(), array(200, 403)))
 				{
-					self::_setHttpStatusMessage($oMessageObject->getHttpStatusCode());
 					$oMessageObject->setTemplateFile('http_status_code');
 				}
-
+				
 				// If module was called normally, change the templates of the module into ones of the message view module
 				if($oModule)
 				{
 					$oModule->setTemplatePath($oMessageObject->getTemplatePath());
 					$oModule->setTemplateFile($oMessageObject->getTemplateFile());
+					$oModule->setHttpStatusCode($oMessageObject->getHttpStatusCode());
 					// Otherwise, set message instance as the target module
 				}
 				else
 				{
 					$oModule = $oMessageObject;
 				}
-
+				
 				self::_clearErrorSession();
 			}
 
@@ -952,13 +1002,11 @@ class ModuleHandler extends Handler
 
 			if($layout_srl && !$oModule->getLayoutFile())
 			{
-
 				// If layout_srl exists, get information of the layout, and set the location of layout_path/ layout_file
 				$oLayoutModel = getModel('layout');
 				$layout_info = $oLayoutModel->getLayout($layout_srl);
 				if($layout_info)
 				{
-
 					// Input extra_vars into $layout_info
 					if($layout_info->extra_var_count)
 					{
@@ -1048,7 +1096,16 @@ class ModuleHandler extends Handler
 				}
 			}
 		}
-
+		
+		// Set http status code
+		if($this->httpStatusCode && $oModule->getHttpStatusCode() === 200)
+		{
+			$oModule->setHttpStatusCode($this->httpStatusCode);
+		}
+		
+		// Set http status message
+		self::_setHttpStatusMessage($oModule->getHttpStatusCode());
+		
 		// Display contents
 		$oDisplayHandler = new DisplayHandler();
 		$oDisplayHandler->printContent($oModule);
@@ -1074,12 +1131,6 @@ class ModuleHandler extends Handler
 	 * */
 	public static function getModuleInstance($module, $type = 'view', $kind = '')
 	{
-
-		if(__DEBUG__ == 3)
-		{
-			$start_time = microtime(true);
-		}
-
 		$parent_module = $module;
 		$kind = strtolower($kind);
 		$type = strtolower($type);
@@ -1143,11 +1194,6 @@ class ModuleHandler extends Handler
 			$GLOBALS['_loaded_module'][$module][$type][$kind] = $oModule;
 		}
 
-		if(__DEBUG__ == 3)
-		{
-			$GLOBALS['__elapsed_class_load__'] += microtime(true) - $start_time;
-		}
-
 		// return the instance
 		return $GLOBALS['_loaded_module'][$module][$type][$kind];
 	}
@@ -1207,17 +1253,19 @@ class ModuleHandler extends Handler
 		}
 		
 		//store before trigger call time
-		$before_trigger_time = NULL;
-		if(__LOG_SLOW_TRIGGER__> 0)
-		{
-			$before_trigger_time = microtime(true);
-		}
+		$before_trigger_time = microtime(true);
 
 		foreach($triggers as $item)
 		{
 			$module = $item->module;
 			$type = $item->type;
 			$called_method = $item->called_method;
+
+			// do not call if module is blacklisted
+			if (Context::isBlacklistedPlugin($module))
+			{
+				continue;
+			}
 
 			// todo why don't we call a normal class object ?
 			$oModule = getModule($module, $type);
@@ -1227,17 +1275,20 @@ class ModuleHandler extends Handler
 			}
 
 			$before_each_trigger_time = microtime(true);
-
 			$output = $oModule->{$called_method}($obj);
-
 			$after_each_trigger_time = microtime(true);
-			$elapsed_time_trigger = $after_each_trigger_time - $before_each_trigger_time;
 
-			$slowlog = new stdClass;
-			$slowlog->caller = $trigger_name . '.' . $called_position;
-			$slowlog->called = $module . '.' . $called_method;
-			$slowlog->called_extension = $module;
-			if($trigger_name != 'XE.writeSlowlog') writeSlowlog('trigger', $elapsed_time_trigger, $slowlog);
+			if ($trigger_name !== 'common.flushDebugInfo')
+			{
+				$trigger_target = $module . ($type === 'class' ? '' : $type) . '.' . $called_method;
+				
+				Rhymix\Framework\Debug::addTrigger(array(
+					'name' => $trigger_name . '.' . $called_position,
+					'target' => $trigger_target,
+					'target_plugin' => $module,
+					'elapsed_time' => $after_each_trigger_time - $before_each_trigger_time,
+				));
+			}
 
 			if(is_object($output) && method_exists($output, 'toBool') && !$output->toBool())
 			{
@@ -1249,7 +1300,39 @@ class ModuleHandler extends Handler
 		$trigger_functions = $oModuleModel->getTriggerFunctions($trigger_name, $called_position);
 		foreach($trigger_functions as $item)
 		{
+			$before_each_trigger_time = microtime(true);
 			$item($obj);
+			$after_each_trigger_time = microtime(true);
+
+			if ($trigger_name !== 'common.writeSlowlog')
+			{
+				if (is_string($item))
+				{
+					$trigger_target = $item;
+				}
+				elseif (is_array($item) && count($item))
+				{
+					if (is_object($item[0]))
+					{
+						$trigger_target = get_class($item[0]) . '.' . strval($item[1]);
+					}
+					else
+					{
+						$trigger_target = implode('.', $item);
+					}
+				}
+				else
+				{
+					$trigger_target = 'closure';
+				}
+				
+				Rhymix\Framework\Debug::addTrigger(array(
+					'name' => $trigger_name . '.' . $called_position,
+					'target' => $trigger_target,
+					'target_plugin' => null,
+					'elapsed_time' => $after_each_trigger_time - $before_each_trigger_time,
+				));
+			}
 
 			if(is_object($output) && method_exists($output, 'toBool') && !$output->toBool())
 			{
@@ -1270,6 +1353,8 @@ class ModuleHandler extends Handler
 		$statusMessageList = array(
 			'100' => 'Continue',
 			'101' => 'Switching Protocols',
+			'102' => 'Processing',
+			'103' => 'Checkpoint',
 			'200' => 'OK',
 			'201' => 'Created',
 			'202' => 'Accepted',
@@ -1277,13 +1362,18 @@ class ModuleHandler extends Handler
 			'204' => 'No Content',
 			'205' => 'Reset Content',
 			'206' => 'Partial Content',
+			'207' => 'Multi-Status',
+			'208' => 'Already Reported',
+			'226' => 'IM Used',
 			'300' => 'Multiple Choices',
 			'301' => 'Moved Permanently',
 			'302' => 'Found',
 			'303' => 'See Other',
 			'304' => 'Not Modified',
 			'305' => 'Use Proxy',
+			'306' => 'Switch Proxy',
 			'307' => 'Temporary Redirect',
+			'308' => 'Permanent Redirect',
 			'400' => 'Bad Request',
 			'401' => 'Unauthorized',
 			'402' => 'Payment Required',
@@ -1297,19 +1387,39 @@ class ModuleHandler extends Handler
 			'410' => 'Gone',
 			'411' => 'Length Required',
 			'412' => 'Precondition Failed',
-			'413' => 'Request Entity Too Large',
-			'414' => 'Request-URI Too Long',
+			'413' => 'Payload Too Large',
+			'414' => 'URI Too Long',
 			'415' => 'Unsupported Media Type',
-			'416' => 'Requested Range Not Satisfiable',
+			'416' => 'Range Not Satisfiable',
 			'417' => 'Expectation Failed',
+			'418' => 'I\'m a teapot',
+			'420' => 'Enhance Your Calm',
+			'421' => 'Misdirected Request',
+			'422' => 'Unprocessable Entity',
+			'423' => 'Locked',
+			'424' => 'Failed Dependency',
+			'425' => 'Unordered Collection',
+			'426' => 'Upgrade Required',
+			'428' => 'Precondition Required',
+			'429' => 'Too Many Requests',
+			'431' => 'Request Header Fields Too Large',
+			'444' => 'No Response',
+			'449' => 'Retry With',
+			'451' => 'Unavailable For Legal Reasons',
 			'500' => 'Internal Server Error',
 			'501' => 'Not Implemented',
 			'502' => 'Bad Gateway',
 			'503' => 'Service Unavailable',
 			'504' => 'Gateway Timeout',
 			'505' => 'HTTP Version Not Supported',
+			'506' => 'Variant Also Negotiates',
+			'507' => 'Insufficient Storage',
+			'508' => 'Loop Detected',
+			'509' => 'Bandwidth Limit Exceeded',
+			'510' => 'Not Extended',
+			'511' => 'Network Authentication Required',
 		);
-		$statusMessage = $statusMessageList[$code];
+		$statusMessage = $statusMessageList[strval($code)];
 		if(!$statusMessage)
 		{
 			$statusMessage = 'OK';

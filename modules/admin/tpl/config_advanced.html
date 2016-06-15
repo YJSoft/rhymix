@@ -8,13 +8,13 @@
 		<input type="hidden" name="act" value="procAdminUpdateAdvanced" />
 		<input type="hidden" name="xe_validator_id" value="modules/admin/tpl/config_advanced/1" />
 		<div class="x_control-group">
-			<label class="x_control-label" for="default_url">{$lang->default_url} <a class="x_icon-question-sign" href="./common/manual/admin/#UMAN_config_general_default_url" target="_blank">{$lang->help}</a></label>
+			<label class="x_control-label" for="default_url">{$lang->default_url} <a class="x_icon-question-sign" href="./common/manual/admin/index.html#UMAN_config_general_default_url" target="_blank">{$lang->help}</a></label>
 			<div class="x_controls">
 				<input type="url" name="default_url" id="default_url" style="min-width:90%" value="{$default_url}"/>
 			</div>
 		</div>
 		<div class="x_control-group">
-			<label class="x_control-label">{$lang->use_ssl} <a class="x_icon-question-sign" href="./common/manual/admin/#UMAN_config_general_ssl" target="_blank">{$lang->help}</a></label>
+			<label class="x_control-label">{$lang->use_ssl} <a class="x_icon-question-sign" href="./common/manual/admin/index.html#UMAN_config_general_ssl" target="_blank">{$lang->help}</a></label>
 			<div class="x_controls">
 				<!--@foreach($lang->ssl_options as $key => $val)-->
 				<label for="ssl_{$key}" class="x_inline"><input type="radio" name="use_ssl" id="ssl_{$key}" value="{$key}" checked="checked"|cond="$use_ssl==$key" /> {$val}</label>
@@ -36,7 +36,7 @@
 			</div>
 		</div>
 		<div class="x_control-group">
-			<label class="x_control-label">{$lang->use_sso} <a class="x_icon-question-sign" href="./common/manual/admin/#UMAN_config_general_sso" target="_blank">{$lang->help}</a></label>
+			<label class="x_control-label">{$lang->use_sso} <a class="x_icon-question-sign" href="./common/manual/admin/index.html#UMAN_config_general_sso" target="_blank">{$lang->help}</a></label>
 			<div class="x_controls">
 				<label for="use_sso_y" class="x_inline"><input type="radio" name="use_sso" id="use_sso_y" value="Y" checked="checked"|cond="$use_sso" /> {$lang->cmd_yes}</label>
 				<label for="use_sso_n" class="x_inline"><input type="radio" name="use_sso" id="use_sso_n" value="N" checked="checked"|cond="!$use_sso" /> {$lang->cmd_no}</label>
@@ -52,10 +52,41 @@
 			</div>
 		</div>
 		<div class="x_control-group">
-			<label class="x_control-label">{$lang->use_db_session} <a class="x_icon-question-sign" href="./common/manual/admin/#UMAN_config_general_db_session" target="_blank">{$lang->help}</a></label>
+			<label class="x_control-label">{$lang->use_db_session} <a class="x_icon-question-sign" href="./common/manual/admin/index.html#UMAN_config_general_db_session" target="_blank">{$lang->help}</a></label>
 			<div class="x_controls">
 				<label for="use_db_session_y" class="x_inline"><input type="radio" name="use_db_session" id="use_db_session_y" value="Y" checked="checked"|cond="$use_db_session" /> {$lang->cmd_yes}</label>
 				<label for="use_db_session_n" class="x_inline"><input type="radio" name="use_db_session" id="use_db_session_n" value="N" checked="checked"|cond="!$use_db_session" /> {$lang->cmd_no}</label>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label">{$lang->thumbnail_type}</label>
+			<div class="x_controls">
+				<label for="thumbnail_type_crop" class="x_inline">
+					<input type="radio" name="thumbnail_type" id="thumbnail_type_crop" value="crop" checked="checked"|cond="$thumbnail_type != 'ratio'" />
+					{$lang->corp}
+				</label>
+				<label for="thumbnail_type_ratio" class="x_inline">
+					<input type="radio" name="thumbnail_type" id="thumbnail_type_ratio" value="ratio" checked="checked"|cond="$thumbnail_type == 'ratio'" />
+					{$lang->ratio}
+				</label>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label">{$lang->use_object_cache}</label>
+			<div class="x_controls">
+				<select name="object_cache_type" id="object_cache_type">
+					<option value="{$key}" loop="$object_cache_types=>$key" selected="selected"|cond="$key==$object_cache_type">{$key}</option>
+				</select>
+				<div id="object_cache_additional_config" class="x_inline" style="display:none;margin-left:16px">
+					<label for="object_cache_host" class="x_inline">{$lang->cache_host}: <input type="text" name="object_cache_host" id="object_cache_host" value="{$object_cache_host}" /></label>
+					<label for="object_cache_port" class="x_inline">{$lang->cache_port}: <input type="number" name="object_cache_port" id="object_cache_port" size="5" style="min-width:70px" value="{$object_cache_port}" /></label>
+				</div>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label" for="cache_default_ttl">{$lang->cache_default_ttl}</label>
+			<div class="x_controls">
+				<input type="text" name="cache_default_ttl" id="cache_default_ttl" value="{$cache_default_ttl}" /> {$lang->unit_sec}
 			</div>
 		</div>
 		<div class="x_control-group">
@@ -66,6 +97,24 @@
 				<label for="minify_scripts_all" class="x_inline"><input type="radio" name="minify_scripts" id="minify_scripts_all" value="all" checked="checked"|cond="$minify_scripts=='all'" /> {$lang->cmd_minify_all}</label>
 				<br />
 				<p class="x_help-block">{$lang->about_minify_scripts}</p>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label">{$lang->concat_scripts}</label>
+			<div class="x_controls">
+				<label for="concat_scripts_none" class="x_inline"><input type="radio" name="concat_scripts" id="concat_scripts_none" value="none" checked="checked"|cond="!contains('css', $concat_scripts) && !contains('js', $concat_scripts)" /> {$lang->cmd_concat_none}</label>
+				<label for="concat_scripts_css_only" class="x_inline"><input type="radio" name="concat_scripts" id="concat_scripts_css_only" value="css" checked="checked"|cond="$concat_scripts=='css'" /> {$lang->cmd_concat_css_only}</label>
+				<label for="concat_scripts_js_only" class="x_inline"><input type="radio" name="concat_scripts" id="concat_scripts_js_only" value="js" checked="checked"|cond="$concat_scripts=='js'" /> {$lang->cmd_concat_js_only}</label>
+				<label for="concat_scripts_css_js" class="x_inline"><input type="radio" name="concat_scripts" id="concat_scripts_css_js" value="css,js" checked="checked"|cond="$concat_scripts=='css,js'" /> {$lang->cmd_concat_css_js}</label>
+				<br />
+				<p class="x_help-block">{$lang->about_concat_scripts}</p>
+			</div>
+		</div>
+		<div class="x_control-group">
+			<label class="x_control-label">{$lang->use_server_push}</label>
+			<div class="x_controls">
+				<label for="use_server_push_y" class="x_inline"><input type="radio" name="use_server_push" id="use_server_push_y" value="Y" checked="checked"|cond="$use_server_push" /> {$lang->cmd_yes}</label>
+				<label for="use_server_push_n" class="x_inline"><input type="radio" name="use_server_push" id="use_server_push_n" value="N" checked="checked"|cond="!$use_server_push" /> {$lang->cmd_no}</label>
 			</div>
 		</div>
 		<div class="x_control-group">

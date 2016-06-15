@@ -3,7 +3,6 @@
 
 /**
  * Manages Context such as request arguments/environment variables
- * It has dual method structure, easy-to use methods which can be called as self::methodname(),and methods called with static object.
  *
  * @author NAVER (developers@xpressengine.com)
  */
@@ -94,6 +93,18 @@ class Context
 	public $meta_tags = array();
 
 	/**
+	 * OpenGraph metadata
+	 * @var array
+	 */
+	public $opengraph_metadata = array();
+	
+	/**
+	 * Canonical URL
+	 * @var string
+	 */
+	public $canonical_url = '';
+
+	/**
 	 * path of Xpress Engine
 	 * @var string
 	 */
@@ -156,6 +167,11 @@ class Context
 	 * @var bool FALSE if init fail
 	 */
 	public $isSuccessInit = TRUE;
+
+	/**
+	 * Plugin blacklist cache
+	 */
+	private static $_blacklist = null;
 
 	/**
 	 * Singleton instance
@@ -222,7 +238,6 @@ class Context
 		
 		// Set global variables for backward compatibility.
 		$GLOBALS['__Context__'] = $this;
-		$GLOBALS['lang'] = &$this->lang;
 		$this->_COOKIE = $_COOKIE;
 		
 		// Set information about the current request.
@@ -271,7 +286,7 @@ class Context
 		
 		if($this->lang_type = self::get('l'))
 		{
-			if($_COOKIE['lang_type'] != $this->lang_type)
+			if($_COOKIE['lang_type'] !== $this->lang_type)
 			{
 				setcookie('lang_type', $this->lang_type, $_SERVER['REQUEST_TIME'] + 3600 * 24 * 1000, '/');
 			}
@@ -280,18 +295,31 @@ class Context
 		{
 			$this->lang_type = $_COOKIE['lang_type'];
 		}
-		elseif($site_module_info->default_language)
+		elseif(config('locale.auto_select_lang') && count($enabled_langs) > 1)
 		{
-			$this->lang_type = $this->db_info->lang_type = $site_module_info->default_language;
-		}
-		else
-		{
-			$this->lang_type = $this->db_info->lang_type;
+			if(isset($_SERVER['HTTP_ACCEPT_LANGUAGE']))
+			{
+				foreach($enabled_langs as $lang_code => $lang_name)
+				{
+					if(!strncasecmp($lang_code, $_SERVER['HTTP_ACCEPT_LANGUAGE'], strlen($lang_code)))
+					{
+						$this->lang_type = $lang_code;
+						setcookie('lang_type', $this->lang_type, $_SERVER['REQUEST_TIME'] + 3600 * 24 * 1000, '/');
+					}
+				}
+			}
 		}
 		
 		if(!$this->lang_type || !isset($enabled_langs[$this->lang_type]))
 		{
-			$this->lang_type = 'ko';
+			if($site_module_info->default_language)
+			{
+				$this->lang_type = $this->db_info->lang_type = $site_module_info->default_language;
+			}
+			else
+			{
+				$this->lang_type = $this->db_info->lang_type ?: 'ko';
+			}
 		}
 
 		self::setLangType($this->lang_type);
@@ -299,6 +327,7 @@ class Context
 		$this->lang = Rhymix\Framework\Lang::getInstance($this->lang_type);
 		$this->lang->loadDirectory(RX_BASEDIR . 'common/lang', 'common');
 		$this->lang->loadDirectory(RX_BASEDIR . 'modules/module/lang', 'module');
+		$GLOBALS['lang'] = $this->lang;
 		
 		// set session handler
 		if(self::isInstalled() && config('session.use_db'))
@@ -329,11 +358,11 @@ class Context
 		}
 		else
 		{
-			ob_start();
 			$this->setCacheControl(-1, true);
-			register_shutdown_function(array($this, 'checkSessionStatus'));
 			$_SESSION = array();
 		}
+
+		ob_start();
 
 		// set authentication information in Context and session
 		if(self::isInstalled())
@@ -376,11 +405,11 @@ class Context
 		}
 		if (strpos($current_url, 'xn--') !== false)
 		{
-			$current_url = self::decodeIdna($current_url);
+			$current_url = Rhymix\Framework\URL::decodeIdna($current_url);
 		}
 		if (strpos($request_uri, 'xn--') !== false)
 		{
-			$request_uri = self::decodeIdna($request_uri);
+			$request_uri = Rhymix\Framework\URL::decodeIdna($request_uri);
 		}
 		self::set('current_url', $current_url);
 		self::set('request_uri', $request_uri);
@@ -411,7 +440,7 @@ class Context
 	{
 		if(self::getSessionStatus())
 		{
-			return;
+			return true;
 		}
 		if($force_start || (count($_SESSION) && !headers_sent()))
 		{
@@ -419,7 +448,9 @@ class Context
 			unset($_SESSION);
 			session_start();
 			$_SESSION = $tempSession;
+			return true;
 		}
+		return false;
 	}
 
 	/**
@@ -429,7 +460,17 @@ class Context
 	 */
 	public static function close()
 	{
-		session_write_close();
+		// Save debugging information.
+		if (!DisplayHandler::$debug_printed)
+		{
+			DisplayHandler::getDebugInfo();
+		}
+		
+		// Check session status and close it if open.
+		if (self::checkSessionStatus())
+		{
+			session_write_close();
+		}
 	}
 
 	/**
@@ -470,12 +511,13 @@ class Context
 		}
 		if (!count($config))
 		{
+			self::$_instance->db_info = self::$_instance->db_info ?: new stdClass;
 			return;
 		}
 
 		// Copy to old format for backward compatibility.
 		self::$_instance->db_info = self::convertDBInfo($config);
-		self::$_instance->allow_rewrite = self::$_instance->db_info->use_rewrite;
+		self::$_instance->allow_rewrite = self::$_instance->db_info->use_rewrite === 'Y';
 		self::set('_http_port', self::$_instance->db_info->http_port ?: null);
 		self::set('_https_port', self::$_instance->db_info->https_port ?: null);
 		self::set('_use_ssl', self::$_instance->db_info->use_ssl);
@@ -531,6 +573,10 @@ class Context
 		$db_info->ftp_info->ftp_root_path = $config['ftp']['path'];
 		$db_info->ftp_info->sftp = $config['ftp']['sftp'] ? 'Y' : 'N';
 		$db_info->default_url = $config['url']['default'];
+		if (!$db_info->default_url)
+		{
+			$db_info->default_url = (RX_SSL ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . RX_BASEURL;
+		}
 		$db_info->http_port = $config['url']['http_port'];
 		$db_info->https_port = $config['url']['https_port'];
 		$db_info->use_ssl = $config['url']['ssl'];
@@ -545,9 +591,9 @@ class Context
 		$db_info->sitelock_title = $config['lock']['title'];
 		$db_info->sitelock_message = $config['lock']['message'];
 		$db_info->sitelock_whitelist = count($config['lock']['allow']) ? $config['lock']['allow'] : array('127.0.0.1');
-		$db_info->embed_white_iframe = $config['embedfilter']['iframe'];
-		$db_info->embed_white_object = $config['embedfilter']['object'];
-		$db_info->use_mobile_view = $config['use_mobile_view'] ? 'Y' : 'N';
+		$db_info->embed_white_iframe = $config['mediafilter']['iframe'] ?: $config['embedfilter']['iframe'];
+		$db_info->embed_white_object = $config['mediafilter']['object'] ?: $config['embedfilter']['object'];
+		$db_info->use_mobile_view = (isset($config['mobile']['enabled']) ? $config['mobile']['enabled'] : $config['use_mobile_view']) ? 'Y' : 'N';
 		$db_info->use_prepared_statements = $config['use_prepared_statements'] ? 'Y' : 'N';
 		$db_info->use_rewrite = $config['use_rewrite'] ? 'Y' : 'N';
 		$db_info->use_sso = $config['use_sso'] ? 'Y' : 'N';
@@ -657,7 +703,7 @@ class Context
 	public function checkSSO()
 	{
 		// pass if it's not GET request or XE is not yet installed
-		if(!config('use_sso') || isCrawler())
+		if(!config('use_sso') || Rhymix\Framework\UA::isRobot())
 		{
 			return TRUE;
 		}
@@ -683,61 +729,66 @@ class Context
 		$current_site = self::getRequestUri();
 
 		// Step 1: if the current site is not the default site, send SSO validation request to the default site
-		if($default_url !== $current_site && !self::get('SSOID') && $_COOKIE['sso'] !== md5($current_site))
+		if($default_url !== $current_site && !self::get('sso_response') && $_COOKIE['sso'] !== md5($current_site))
 		{
 			// Set sso cookie to prevent multiple simultaneous SSO validation requests
 			setcookie('sso', md5($current_site), 0, '/');
 			
 			// Redirect to the default site
-			$redirect_url = sprintf('%s?return_url=%s', $default_url, urlencode(base64_encode($current_site)));
+			$sso_request = Rhymix\Framework\Security::encrypt(Rhymix\Framework\URL::getCurrentURL());
+			$redirect_url = $default_url . '?sso_request=' . urlencode($sso_request);
 			header('Location:' . $redirect_url);
-			return FALSE;
+			return false;
 		}
 
 		// Step 2: receive and process SSO validation request at the default site
-		if($default_url === $current_site && self::get('return_url'))
+		if($default_url === $current_site && self::get('sso_request'))
 		{
 			// Get the URL of the origin site
-			$url = base64_decode(self::get('return_url'));
-			$url_info = parse_url($url);
+			$sso_request = Rhymix\Framework\Security::decrypt(self::get('sso_request'));
+			if (!$sso_request || !preg_match('!^https?://!', $sso_request))
+			{
+				self::displayErrorPage('SSO Error', 'Invalid SSO Request', 400);
+				return false;
+			}
 
 			// Check that the origin site is a valid site in this XE installation (to prevent open redirect vuln)
 			if(!getModel('module')->getSiteInfoByDomain(rtrim($url, '/'))->site_srl)
 			{
-				htmlHeader();
-				echo self::getLang("msg_invalid_request");
-				htmlFooter();
-				return FALSE;
+				self::displayErrorPage('SSO Error', 'Invalid SSO Request', 400);
+				return false;
 			}
 
 			// Redirect back to the origin site
-			$url_info['query'] .= ($url_info['query'] ? '&' : '') . 'SSOID=' . session_id();
-			$redirect_url = sprintf('%s://%s%s%s%s', $url_info['scheme'], $url_info['host'], $url_info['port'] ? (':' . $url_info['port']) : '', $url_info['path'], ($url_info['query'] ? ('?' . $url_info['query']) : ''));
-			header('Location:' . $redirect_url);
-			return FALSE;
+			$sso_response = Rhymix\Framework\Security::encrypt(session_id());
+			header('Location: ' . Rhymix\Framework\URL::modifyURL($sso_request, array('sso_response' => $sso_response)));
+			return false;
 		}
 
 		// Step 3: back at the origin site, set session ID to be the same as the default site
-		if($default_url !== $current_site && self::get('SSOID'))
+		if($default_url !== $current_site && self::get('sso_response'))
 		{
-			// Check that the session ID was given by the default site (to prevent session fixation CSRF)
+			// Check SSO response
+			$sso_response = Rhymix\Framework\Security::decrypt(self::get('sso_response'));
+			if ($sso_response === false)
+			{
+				self::displayErrorPage('SSO Error', 'Invalid SSO Response', 400);
+				return false;
+			}
+			
+			// Check that the response was given by the default site (to prevent session fixation CSRF)
 			if(isset($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], $default_url) !== 0)
 			{
-				htmlHeader();
-				echo self::getLang("msg_invalid_request");
-				htmlFooter();
-				return FALSE;
+				self::displayErrorPage('SSO Error', 'Invalid SSO Response', 400);
+				return false;
 			}
 
 			// Set session ID
-			setcookie(session_name(), self::get('SSOID'));
+			setcookie(session_name(), $sso_response);
 
 			// Finally, redirect to the originally requested URL
-			$url_info = parse_url(self::getRequestUrl());
-			$url_info['query'] = preg_replace('/(^|\b)SSOID=([^&?]+)/', '', $url_info['query']);
-			$redirect_url = sprintf('%s://%s%s%s%s', $url_info['scheme'], $url_info['host'], $url_info['port'] ? (':' . $url_info['port']) : '', $url_info['path'], ($url_info['query'] ? ('?' . $url_info['query']) : ''));
-			header('Location:' . $redirect_url);
-			return FALSE;
+			header('Location: ' . Rhymix\Framework\URL::getCurrentURL(array('sso_response' => null)));
+			return false;
 		}
 
 		// If none of the conditions above apply, proceed normally
@@ -771,24 +822,46 @@ class Context
 	}
 
 	/**
-	 * Add string to browser title
+	 * Append string to browser title
 	 *
-	 * @param string $site_title Browser title to be added
+	 * @param string $site_title Browser title to be appended
 	 * @return void
 	 */
-	public static function addBrowserTitle($site_title)
+	public static function addBrowserTitle($title)
 	{
-		if(!$site_title)
+		if(!$title)
 		{
 			return;
 		}
 		if(self::$_instance->site_title)
 		{
-			self::$_instance->site_title .= ' - ' . $site_title;
+			self::$_instance->site_title .= ' - ' . $title;
 		}
 		else
 		{
-			self::$_instance->site_title = $site_title;
+			self::$_instance->site_title = $title;
+		}
+	}
+
+	/**
+	 * Prepend string to browser title
+	 *
+	 * @param string $site_title Browser title to be prepended
+	 * @return void
+	 */
+	public static function prependBrowserTitle($title)
+	{
+		if(!$title)
+		{
+			return;
+		}
+		if(self::$_instance->site_title)
+		{
+			self::$_instance->site_title = $title . ' - ' . self::$_instance->site_title;
+		}
+		else
+		{
+			self::$_instance->site_title = $title;
 		}
 	}
 
@@ -796,15 +869,22 @@ class Context
 	 * Set string to browser title
 	 *
 	 * @param string $site_title Browser title  to be set
+	 * @param array $vars
 	 * @return void
 	 */
-	public static function setBrowserTitle($site_title)
+	public static function setBrowserTitle($title, $vars = array())
 	{
-		if(!$site_title)
+		if (!$title)
 		{
 			return;
 		}
-		self::$_instance->site_title = $site_title;
+		if (count($vars))
+		{
+			$title = trim(trim(preg_replace_callback('/\\$(\w+)/', function($matches) use($vars) {
+				return isset($vars[strtolower($matches[1])]) ? $vars[strtolower($matches[1])] : $matches[0];
+			}, $title), ' -'));
+		}
+		self::$_instance->site_title = $title;
 	}
 
 	/**
@@ -814,26 +894,52 @@ class Context
 	 */
 	public static function getBrowserTitle()
 	{
-		$oModuleController = getController('module');
-		$oModuleController->replaceDefinedLangCode(self::$_instance->site_title);
-
+		if (!self::$_instance->site_title)
+		{
+			return '';
+		}
+		getController('module')->replaceDefinedLangCode(self::$_instance->site_title);
 		return htmlspecialchars(self::$_instance->site_title, ENT_COMPAT | ENT_HTML401, 'UTF-8', FALSE);
 	}
 
 	/**
-	 * Return layout's title
-	 * @return string layout's title
+	 * Return site title
+	 * 
+	 * @return string
 	 */
 	public static function getSiteTitle()
 	{
-		$oModuleModel = getModel('module');
-		$moduleConfig = $oModuleModel->getModuleConfig('module');
-
-		if(isset($moduleConfig->siteTitle))
+		$moduleConfig = getModel('module')->getModuleConfig('module');
+		if (isset($moduleConfig->siteTitle))
 		{
-			return $moduleConfig->siteTitle;
+			$title = trim($moduleConfig->siteTitle);
+			getController('module')->replaceDefinedLangCode($title);
+			return $title;
 		}
-		return '';
+		else
+		{
+			return '';
+		}
+	}
+	
+	/**
+	 * Return site subtitle
+	 * 
+	 * @return string
+	 */
+	public static function getSiteSubtitle()
+	{
+		$moduleConfig = getModel('module')->getModuleConfig('module');
+		if (isset($moduleConfig->siteSubtitle))
+		{
+			$subtitle = trim($moduleConfig->siteSubtitle);
+			getController('module')->replaceDefinedLangCode($subtitle);
+			return $subtitle;
+		}
+		else
+		{
+			return '';
+		}
 	}
 
 	/**
@@ -861,7 +967,14 @@ class Context
 		{
 			$plugin_name = null;
 		}
-		return self::$_instance->lang->loadDirectory($path, $plugin_name);
+		
+		if (!$GLOBALS['lang'] instanceof Rhymix\Framework\Lang)
+		{
+			$GLOBALS['lang'] = Rhymix\Framework\Lang::getInstance(self::$_instance->lang_type ?: config('locale.default_lang') ?: 'ko');
+			$GLOBALS['lang']->loadDirectory(RX_BASEDIR . 'common/lang', 'common');
+		}
+		
+		return $GLOBALS['lang']->loadDirectory($path, $plugin_name);
 	}
 
 	/**
@@ -904,14 +1017,13 @@ class Context
 	 */
 	public static function getLang($code)
 	{
-		if (self::$_instance->lang)
+		if (!$GLOBALS['lang'] instanceof Rhymix\Framework\Lang)
 		{
-			return self::$_instance->lang->get($code);
+			$GLOBALS['lang'] = Rhymix\Framework\Lang::getInstance(self::$_instance->lang_type ?: config('locale.default_lang') ?: 'ko');
+			$GLOBALS['lang']->loadDirectory(RX_BASEDIR . 'common/lang', 'common');
 		}
-		else
-		{
-			return $code;
-		}
+		
+		return $GLOBALS['lang']->get($code);
 	}
 
 	/**
@@ -923,10 +1035,13 @@ class Context
 	 */
 	public static function setLang($code, $val)
 	{
-		if (self::$_instance->lang)
+		if (!$GLOBALS['lang'] instanceof Rhymix\Framework\Lang)
 		{
-			self::$_instance->lang->set($code, $val);
+			$GLOBALS['lang'] = Rhymix\Framework\Lang::getInstance(self::$_instance->lang_type ?: config('locale.default_lang') ?: 'ko');
+			$GLOBALS['lang']->loadDirectory(RX_BASEDIR . 'common/lang', 'common');
 		}
+		
+		$GLOBALS['lang']->set($code, $val);
 	}
 
 	/**
@@ -1020,7 +1135,11 @@ class Context
 	 */
 	public static function convertEncodingStr($str)
 	{
-        if(!$str) return null;
+        if (!$str || utf8_check($str))
+        {
+        	return $str;
+        }
+        
 		$obj = new stdClass;
 		$obj->str = $str;
 		$obj = self::convertEncoding($obj);
@@ -1035,15 +1154,7 @@ class Context
 	 */
 	public static function encodeIdna($domain)
 	{
-		if(function_exists('idn_to_ascii'))
-		{
-			return idn_to_ascii($domain);
-		}
-		else
-		{
-			$encoder = new TrueBV\Punycode();
-			return $encoder->encode($domain);
-		}
+		return Rhymix\Framework\URL::encodeIdna($domain);
 	}
 
 	/**
@@ -1054,15 +1165,7 @@ class Context
 	 */
 	public static function decodeIdna($domain)
 	{
-		if(function_exists('idn_to_utf8'))
-		{
-			return idn_to_utf8($domain);
-		}
-		else
-		{
-			$decoder = new TrueBV\Punycode();
-			return $decoder->decode($domain);
-		}
+		return Rhymix\Framework\URL::decodeIdna($domain);
 	}
 
 	/**
@@ -1162,7 +1265,7 @@ class Context
 			{
 				continue;
 			}
-			$key = htmlentities($key);
+			$key = escape($key);
 			$val = $this->_filterRequestVar($key, $val);
 
 			if($requestMethod == 'GET' && isset($_GET[$key]))
@@ -1245,10 +1348,14 @@ class Context
 		}
 
 		$xml = $GLOBALS['HTTP_RAW_POST_DATA'];
-		if(Security::detectingXEE($xml))
+		if(!Rhymix\Framework\Security::checkXEE($xml))
 		{
 			header("HTTP/1.0 400 Bad Request");
 			exit;
+		}
+		if(function_exists('libxml_disable_entity_loader'))
+		{
+			libxml_disable_entity_loader(true);
 		}
 
 		$oXml = new XmlParser();
@@ -1325,10 +1432,9 @@ class Context
 	 * @see Cast variables, such as _srl, page, and cpage, into interger
 	 * @param string $key Variable key
 	 * @param string $val Variable value
-	 * @param string $do_stripslashes Whether to strip slashes
 	 * @return mixed filtered value. Type are string or array
 	 */
-	public function _filterRequestVar($key, $val, $do_stripslashes = 1)
+	public function _filterRequestVar($key, $val)
 	{
 		if(!($isArray = is_array($val)))
 		{
@@ -1338,7 +1444,7 @@ class Context
 		$result = array();
 		foreach($val as $k => $v)
 		{
-			$k = htmlentities($k);
+			$k = escape($k);
 			if($key === 'page' || $key === 'cpage' || substr_compare($key, 'srl', -3) === 0)
 			{
 				$result[$k] = !preg_match('/^[0-9,]+$/', $v) ? (int) $v : $v;
@@ -1354,13 +1460,11 @@ class Context
 			else
 			{
 				$result[$k] = $v;
-
-				if($do_stripslashes && version_compare(PHP_VERSION, '5.4.0', '<') && get_magic_quotes_gpc())
+				if(is_array($result[$k]))
 				{
-					$result[$k] = stripslashes($result[$k]);
+					array_walk_recursive($result[$k], function(&$val) { $val = trim($val); });
 				}
-
-				if(!is_array($result[$k]))
+				else
 				{
 					$result[$k] = trim($result[$k]);
 				}
@@ -1441,13 +1545,9 @@ class Context
 		}
 		
 		// Allow if the current user is in the list of allowed IPs.
-		$allowed_list = config('lock.allow');
-		foreach ($allowed_list as $allowed_ip)
+		if (Rhymix\Framework\Filters\IpFilter::inRanges(RX_CLIENT_IP, config('lock.allow')))
 		{
-			if (Rhymix\Framework\IpFilter::inRange(RX_CLIENT_IP, $allowed_ip))
-			{
-				return;
-			}
+			return;
 		}
 		
 		// Set headers and constants for backward compatibility.
@@ -1464,18 +1564,50 @@ class Context
 		}
 		else
 		{
-			self::setBrowserTitle(self::getSiteTitle());
-			$oMessageObject = getView('message');
-			$oMessageObject->setHttpStatusCode(503);
-			$oMessageObject->setError(-1);
-			$oMessageObject->setMessage(_XE_SITELOCK_TITLE_);
-			$oMessageObject->dispMessage();
-			$oModuleHandler = new ModuleHandler;
-			$oModuleHandler->displayContent($oMessageObject);
+			self::displayErrorPage(_XE_SITELOCK_TITLE_, _XE_SITELOCK_MESSAGE_, 503);
 		}
 		exit;
 	}
-
+	
+	/**
+	 * Display a generic error page and exit.
+	 * 
+	 * @param string $title
+	 * @param string $message
+	 * @return void
+	 */
+	public static function displayErrorPage($title = 'Error', $message = '', $status = 500)
+	{
+		// Change current directory to the Rhymix installation path.
+		chdir(\RX_BASEDIR);
+		
+		// Set the title.
+		self::setBrowserTitle(self::getSiteTitle());
+		self::addBrowserTitle($title);
+		
+		// Set the message.
+		$oMessageObject = getView('message');
+		$oMessageObject->setError(-1);
+		if ($status != 200)
+		{
+			$oMessageObject->setHttpStatusCode($status);
+		}
+		
+		if (in_array(Context::getRequestMethod(), array('XMLRPC', 'JSON', 'JS_CALLBACK')))
+		{
+			$oMessageObject->setMessage(trim($title . "\n\n" . $message));
+		}
+		else
+		{
+			$oMessageObject->setMessage($title);
+			$oMessageObject->dispMessage($message);
+		}
+		
+		// Display the message.
+		$oModuleHandler = new ModuleHandler;
+		$oModuleHandler->displayContent($oMessageObject);
+	}
+	
 	/**
 	 * Return request method
 	 * @return string Request method type. (Optional - GET|POST|XMLRPC|JSON)
@@ -1843,7 +1975,7 @@ class Context
 		self::$_user_vars->{$key} = $val;
 		self::$_instance->{$key} = $val;
 
-		if($set_to_get_vars)
+		if($set_to_get_vars || isset(self::$_instance->get_vars->{$key}))
 		{
 			if($val === NULL || $val === '')
 			{
@@ -2000,6 +2132,10 @@ class Context
 		if(self::getSslStatus() == 'optional')
 		{
 			return self::$_instance->ssl_actions;
+		}
+		else
+		{
+			return array();
 		}
 	}
 
@@ -2201,11 +2337,12 @@ class Context
 	 * Returns the list of javascripts that matches the given type.
 	 *
 	 * @param string $type Added position. (head:<head>..</head>, body:<body>..</body>)
+	 * @param bool $finalize (optional)
 	 * @return array Returns javascript file list. Array contains file, targetie.
 	 */
-	public static function getJsFile($type = 'head')
+	public static function getJsFile($type = 'head', $finalize = false)
 	{
-		return self::$_instance->oFrontEndFileHandler->getJsFileList($type);
+		return self::$_instance->oFrontEndFileHandler->getJsFileList($type, $finalize);
 	}
 
 	/**
@@ -2253,11 +2390,12 @@ class Context
 	/**
 	 * Return a list of css files
 	 *
+	 * @param bool $finalize (optional)
 	 * @return array Returns css file list. Array contains file, media, targetie.
 	 */
-	public static function getCSSFile()
+	public static function getCSSFile($finalize = false)
 	{
-		return self::$_instance->oFrontEndFileHandler->getCssFileList();
+		return self::$_instance->oFrontEndFileHandler->getCssFileList($finalize);
 	}
 
 	/**
@@ -2511,6 +2649,26 @@ class Context
 	}
 
 	/**
+	 * Check whether an addon, module, or widget is blacklisted
+	 * 
+	 * @param string $plugin_name
+	 * @return bool
+	 */
+	public static function isBlacklistedPlugin($plugin_name)
+	{
+		if (self::$_blacklist === null)
+		{
+			self::$_blacklist = (include RX_BASEDIR . 'common/defaults/blacklist.php');
+			if (!is_array(self::$_blacklist))
+			{
+				self::$_blacklist = array();
+			}
+		}
+		
+		return isset(self::$_blacklist[$plugin_name]);
+	}
+
+	/**
 	 * Converts a local path into an URL
 	 *
 	 * @param string $path URL path
@@ -2569,33 +2727,91 @@ class Context
 
 	/**
 	 * Get meta tag
+	 * 
+	 * @param string $name (optional)
 	 * @return array The list of meta tags
 	 */
-	public static function getMetaTag()
+	public static function getMetaTag($name = null)
 	{
-		$ret = array();
-		foreach(self::$_instance->meta_tags as $key => $val)
+		if ($name !== null)
 		{
-			list($name, $is_http_equiv) = explode("\t", $key);
-			$ret[] = array('name' => $name, 'is_http_equiv' => $is_http_equiv, 'content' => $val);
+			return isset(self::$_instance->meta_tags[$name]) ? self::$_instance->meta_tags[$name]['content'] : null;
+		}
+		
+		$ret = array();
+		foreach(self::$_instance->meta_tags as $name => $content)
+		{
+			$ret[] = array('name' => $name, 'is_http_equiv' => $content['is_http_equiv'], 'content' => escape($content['content'], false));
 		}
 
 		return $ret;
 	}
 
 	/**
-	 * Add the meta tag
+	 * Add meta tag
 	 *
 	 * @param string $name name of meta tag
 	 * @param string $content content of meta tag
 	 * @param mixed $is_http_equiv value of http_equiv
 	 * @return void
 	 */
-	public static function addMetaTag($name, $content, $is_http_equiv = FALSE)
+	public static function addMetaTag($name, $content, $is_http_equiv = false)
 	{
-		self::$_instance->meta_tags[$name . "\t" . ($is_http_equiv ? '1' : '0')] = $content;
+		getController('module')->replaceDefinedLangCode($content);
+		self::$_instance->meta_tags[$name] = array('is_http_equiv' => (bool)$is_http_equiv, 'content' => $content);
 	}
-
+	
+	/**
+	 * Get OpenGraph metadata
+	 * 
+	 * @return array
+	 */
+	public static function getOpenGraphData()
+	{
+		$ret = array();
+		foreach(self::$_instance->opengraph_metadata as $key => $val)
+		{
+			if ($val[1] === false || $val[1] === null)
+			{
+				continue;
+			}
+			$ret[] = array('property' => escape($val[0], false), 'content' => escape($val[1], false));
+		}
+		return $ret;
+	}
+	
+	/**
+	 * Add OpenGraph metadata
+	 * 
+	 * @param string $name
+	 * @param mixed $content
+	 * @return void
+	 */
+	public static function addOpenGraphData($name, $content)
+	{
+		if (is_array($content))
+		{
+			foreach ($content as $key => $val)
+			{
+				self::addOpenGraphData("$name:$key", $val);
+			}
+		}
+		else
+		{
+			self::$_instance->opengraph_metadata[] = array($name, $content);
+		}
+	}
+	
+	/**
+	 * Set canonical URL
+	 * 
+	 * @param string $url
+	 * @return void
+	 */
+	public static function setCanonicalURL($url)
+	{
+		self::$_instance->canonical_url = escape($url);
+	}
 }
 /* End of file Context.class.php */
 /* Location: ./classes/context/Context.class.php */

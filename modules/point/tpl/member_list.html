@@ -22,7 +22,7 @@
 					<option loop="$group_list => $key,$val" value="{$val->group_srl}" selected="selected"|cond="$selected_group_srl==$val->group_srl">{$val->title}</option>
 				</select>
 				<select name="search_target" style="width:auto;margin:0" title="{$lang->search_target}">
-					<option value="{$identifier}" selected="selected"|cond="$search_target == $identifier">{Context::getLang($identifier)}</option>
+					<option value="{$identifier}" selected="selected"|cond="$search_target == $identifier">{lang($identifier)}</option>
 					<option loop="$lang->search_target_list => $key,$val" value="{$key}" selected="selected"|cond="$search_target==$key">{$val}</option>
 				</select>
 				<span class="x_input-append">
@@ -36,7 +36,7 @@
 	<thead>
 		<tr>
 			<th scope="col">{$lang->no}</th>
-			<th scope="col">{Context::getLang($identifier)}</th>
+			<th scope="col">{lang($identifier)}</th>
 			<th scope="col">{$lang->nick_name}</th>
 			<th scope="col">{$lang->point}</th>
 			<th scope="col">{$lang->level}</th>
@@ -56,7 +56,7 @@
 					<input type="text" name="orgpoint" value="{$val->point}" disabled="disabled" style="width:40px;text-align:right" />
 					-&gt;
 					<span class="x_input-append">
-						<input type="number" id="point_{$val->member_srl}" value="{$val->point}" name="point" required style="width:60px;text-align:right" />
+						<input type="text" id="point_{$val->member_srl}" value="{$val->point}" name="point" required style="width:60px;text-align:right" />
 						<input type="button" value="{$lang->cmd_update}" onclick="updatePoint({$val->member_srl})" class="x_btn" />
 					</span>
 				</form>
@@ -125,7 +125,7 @@
 				<option loop="$group_list => $key,$val" value="{$val->group_srl}" selected="selected"|cond="$selected_group_srl==$val->group_srl">{$val->title}</option>
 			</select>
 			<select name="search_target" style="width:auto;margin:0" title="{$lang->search_target}">
-				<option value="{$identifier}" selected="selected"|cond="$search_target == $identifier">{Context::getLang($identifier)}</option>
+				<option value="{$identifier}" selected="selected"|cond="$search_target == $identifier">{lang($identifier)}</option>
 				<option loop="$lang->search_target_list => $key,$val" value="{$key}" selected="selected"|cond="$search_target==$key">{$val}</option>
 			</select>
 			<span class="x_input-append">

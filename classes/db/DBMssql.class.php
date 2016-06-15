@@ -71,6 +71,16 @@ class DBMssql extends DB
 			$this->setError(-1, 'database connect fail' . PHP_EOL . $errors);
 			return;
 		}
+		
+		$server_info = sqlsrv_server_info($result);
+		$server_version = $server_info['SQLServerVersion'];
+		if ($server_version && version_compare($server_version, '10', '<'))
+		{
+			$this->setError(-1, 'Rhymix requires Microsoft SQL Server 2008 or later. Current version is ' . $server_version);
+			return;
+		}
+		
+		
 		return $result;
 	}
 
@@ -94,10 +104,6 @@ class DBMssql extends DB
 	 */
 	function addQuotes($string)
 	{
-		if(version_compare(PHP_VERSION, "5.4.0", "<") && get_magic_quotes_gpc())
-		{
-			$string = stripslashes(str_replace("\\", "\\\\", $string));
-		}
 		//if(!is_numeric($string)) $string = str_replace("'","''",$string);
 
 		return $string;
@@ -947,8 +953,6 @@ class DBMssql extends DB
 
 		// TODO Decide if we continue to pass parameters like this
 		$this->param = $queryObject->getArguments();
-
-		$query .= (__DEBUG_QUERY__ & 1 && $output->query_id) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 		$result = $this->_query($query, $connection);
 
 		if($this->isError())
@@ -1028,7 +1032,6 @@ class DBMssql extends DB
 				$count_query = sprintf('select count(*) as "count" from (%s) xet', $count_query);
 			}
 
-			$count_query .= (__DEBUG_QUERY__ & 1 && $queryObject->queryID) ? sprintf(' ' . $this->comment_syntax, $this->query_id) : '';
 			$this->param = $queryObject->getArguments();
 			$result_count = $this->_query($count_query, $connection);
 			$count_output = $this->_fetch($result_count);

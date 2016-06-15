@@ -24,7 +24,6 @@
 		<action name="dispMemberModifyNicknameLog" type="view" standalone="true" />
 
 		<action name="dispMemberAdminList" type="view" index="true" admin_index="true" menu_name="userList" menu_index="true"/>
-		<!--action name="dispMemberAdminConfig" type="view" menu_name="userSetting" menu_index="true" /-->
 		<action name="dispMemberAdminConfig" type="view" menu_name="userSetting" menu_index="true" />
 		<action name="dispMemberAdminSignUpConfig" type="view" menu_name="userSetting" />
 		<action name="dispMemberAdminLoginConfig" type="view" menu_name="userSetting" />
@@ -33,6 +32,7 @@
 		<action name="dispMemberAdminGroupList" type="view" menu_name="userGroup" menu_index="true" />
 		<action name="dispMemberAdminInfo" type="view" menu_name="userList" />
 		<action name="dispMemberAdminInsertJoinForm" type="view" />
+		<action name="dispMemberAdminNickNameLog" type="view" />
 
 		<action name="getMemberMenu" type="model" standalone="true" />
 		<action name="getMemberAdminColorset" type="model" />

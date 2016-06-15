@@ -6,7 +6,7 @@ class HTMLDisplayHandler
 	/**
 	 * Reserved scripts
 	 */
-	public static $reservedCSS = '@\bcommon/css/(?:xe|mobile)\.(?:min\.)?css$@';
+	public static $reservedCSS = '@\bcommon/css/(?:xe|rhymix|mobile)\.(?:min\.)?(?:s?css|less)$@';
 	public static $reservedJS = '@\bcommon/js/(?:jquery(?:-[123][0-9.x-]+)?|xe?|common|js_app|xml_handler|xml_js_filter)\.(?:min\.)?js$@';
 	
 	/**
@@ -86,10 +86,7 @@ class HTMLDisplayHandler
 
 			if(Context::get('layout') != 'none')
 			{
-				if(__DEBUG__ == 3)
-				{
-					$start = microtime(true);
-				}
+				$start = microtime(true);
 
 				Context::set('content', $output, false);
 
@@ -142,10 +139,7 @@ class HTMLDisplayHandler
 				$pathInfo = pathinfo($layout_file);
 				$onlyLayoutFile = $pathInfo['filename'];
 
-				if(__DEBUG__ == 3)
-				{
-					$GLOBALS['__layout_compile_elapsed__'] = microtime(true) - $start;
-				}
+				$GLOBALS['__layout_compile_elapsed__'] = microtime(true) - $start;
 
 				if(stripos($_SERVER['HTTP_USER_AGENT'], 'MSIE') !== FALSE && (Context::get('_use_ssl') == 'optional' || Context::get('_use_ssl') == 'always'))
 				{
@@ -168,10 +162,7 @@ class HTMLDisplayHandler
 			return;
 		}
 
-		if(__DEBUG__ == 3)
-		{
-			$start = microtime(true);
-		}
+		$start = microtime(true);
 
 		// move <style ..></style> in body to the header
 		$output = preg_replace_callback('!<style(.*?)>(.*?)<\/style>!is', array($this, '_moveStyleToHeader'), $output);
@@ -218,13 +209,16 @@ class HTMLDisplayHandler
 			$output = preg_replace_callback('@<textarea[^>]*\sname="' . $keys . '".+</textarea>@isU', array(&$this, '_preserveTextAreaValue'), $output);
 		}
 
-		if(__DEBUG__ == 3)
-		{
-			$GLOBALS['__trans_content_elapsed__'] = microtime(true) - $start;
-		}
+		$GLOBALS['__trans_content_elapsed__'] = microtime(true) - $start;
 
 		// Remove unnecessary information
 		$output = preg_replace('/member\_\-([0-9]+)/s', 'member_0', $output);
+		
+		// Add OpenGraph metadata
+		if (config('seo.og_enabled') && Context::get('module') !== 'admin')
+		{
+			$this->_addOpenGraphMetadata();
+		}
 
 		// set icon
 		$oAdminModel = getAdminModel('admin');
@@ -235,17 +229,17 @@ class HTMLDisplayHandler
 
 		// convert the final layout
 		Context::set('content', $output);
+		Context::set('m', $is_mobile = Mobile::isFromMobilePhone() ? 1 : 0);
 		$oTemplate = TemplateHandler::getInstance();
-		if(Mobile::isFromMobilePhone())
+		if($is_mobile)
 		{
 			$this->_loadMobileJSCSS();
-			$output = $oTemplate->compile('./common/tpl', 'mobile_layout');
 		}
 		else
 		{
 			$this->_loadDesktopJSCSS();
-			$output = $oTemplate->compile('./common/tpl', 'common_layout');
 		}
+		$output = $oTemplate->compile('./common/tpl', 'common_layout');
 
 		// replace the user-defined-language
 		$oModuleController = getController('module');
@@ -392,6 +386,143 @@ class HTMLDisplayHandler
 		}
 		Context::loadFile($matches[2]);
 	}
+	
+	/**
+	 * Add OpenGraph metadata tags.
+	 * 
+	 * @param string $output
+	 * @return void
+	 */
+	function _addOpenGraphMetadata()
+	{
+		// Get information about the current request.
+		$page_type = 'website';
+		$current_module_info = Context::get('current_module_info');
+		$site_module_info = Context::get('site_module_info');
+		$document_srl = Context::get('document_srl');
+		if ($document_srl)
+		{
+			$oDocument = Context::get('oDocument') ?: getModel('document')->getDocument($document_srl, false, false);
+			if ($oDocument instanceof documentItem && $oDocument->document_srl == $document_srl && !$oDocument->isSecret())
+			{
+				$page_type = 'article';
+			}
+		}
+		
+		// Add basic metadata.
+		Context::addOpenGraphData('og:title', Context::getBrowserTitle());
+		Context::addOpenGraphData('og:site_name', Context::getSiteTitle());
+		if ($page_type === 'article' && config('seo.og_extract_description'))
+		{
+			$description = trim(utf8_normalize_spaces($oDocument->getContentText(200)));
+		}
+		else
+		{
+			$description = Context::getMetaTag('description');
+		}
+		Context::addOpenGraphData('og:description', $description);
+		Context::addMetaTag('description', $description);
+		
+		// Add metadata about this page.
+		Context::addOpenGraphData('og:type', $page_type);
+		if ($page_type === 'article')
+		{
+			$canonical_url = getFullUrl('', 'mid', $current_module_info->mid, 'document_srl', $document_srl);
+		}
+		elseif (($page = Context::get('page')) > 1)
+		{
+			$canonical_url = getFullUrl('', 'mid', $current_module_info->mid, 'page', $page);
+		}
+		elseif ($current_module_info->module_srl == $site_module_info->module_srl)
+		{
+			$canonical_url = getFullUrl('');
+		}
+		else
+		{
+			$canonical_url = getFullUrl('', 'mid', $current_module_info->mid);
+		}
+		Context::addOpenGraphData('og:url', $canonical_url);
+		Context::setCanonicalURL($canonical_url);
+		
+		// Add metadata about the locale.
+		$lang_type = Context::getLangType();
+		$locales = (include \RX_BASEDIR . 'common/defaults/locales.php');
+		if (isset($locales[$lang_type]))
+		{
+			Context::addOpenGraphData('og:locale', $locales[$lang_type]);
+		}
+		if ($page_type === 'article' && $oDocument->getLangCode() !== $lang_type && isset($locales[$oDocument->getLangCode()]))
+		{
+			Context::addOpenGraphData('og:locale:alternate', $locales[$oDocument->getLangCode()]);
+		}
+		
+		// Add image.
+		if ($page_type === 'article' && config('seo.og_extract_images'))
+		{
+			if (($document_images = Rhymix\Framework\Cache::get("seo:document_images:$document_srl")) === null)
+			{
+				$document_images = array();
+				if ($oDocument->hasUploadedFiles())
+				{
+					foreach ($oDocument->getUploadedFiles() as $file)
+					{
+						if ($file->isvalid !== 'Y' || !preg_match('/\.(?:bmp|gif|jpe?g|png)$/i', $file->uploaded_filename))
+						{
+							continue;
+						}
+						list($width, $height) = @getimagesize($file->uploaded_filename);
+						if ($width < 100 && $height < 100)
+						{
+							continue;
+						}
+						$image = array('filepath' => $file->uploaded_filename, 'width' => $width, 'height' => $height);
+						if ($file->cover_image === 'Y')
+						{
+							array_unshift($document_images, $image);
+						}
+						else
+						{
+							$document_images[] = $image;
+						}
+						if (count($document_images) >= 1)
+						{
+							break;
+						}
+					}
+				}
+				Rhymix\Framework\Cache::set("seo:document_images:$document_srl", $document_images, 0, true);
+			}
+		}
+		else
+		{
+			$document_images = null;
+		}
+		
+		if ($document_images)
+		{
+			$first_image = reset($document_images);
+			$first_image['filepath'] = preg_replace('/^.\\/files\\//', \RX_BASEURL . 'files/', $first_image['filepath']);
+			Context::addOpenGraphData('og:image', Rhymix\Framework\URL::getCurrentDomainURL($first_image['filepath']));
+			Context::addOpenGraphData('og:image:width', $first_image['width']);
+			Context::addOpenGraphData('og:image:height', $first_image['height']);
+		}
+		elseif ($default_image = getAdminModel('admin')->getSiteDefaultImageUrl($width, $height))
+		{
+			Context::addOpenGraphData('og:image', Rhymix\Framework\URL::getCurrentDomainURL($default_image));
+			if ($width && $height)
+			{
+				Context::addOpenGraphData('og:image:width', $width);
+				Context::addOpenGraphData('og:image:height', $height);
+			}
+		}
+		
+		// Add datetime for articles.
+		if ($page_type === 'article' && config('seo.og_use_timestamps'))
+		{
+			Context::addOpenGraphData('article:published_time', $oDocument->getRegdate('c'));
+			Context::addOpenGraphData('article:modified_time', $oDocument->getUpdate('c'));
+		}
+	}
 
 	/**
 	 * import basic .js files.
@@ -406,7 +537,6 @@ class HTMLDisplayHandler
 		if(Context::get('module') == 'admin' || strpos(Context::get('act'), 'Admin') > 0)
 		{
 			Context::loadFile(array('./modules/admin/tpl/css/admin.css', '', '', 10), true);
-			Context::loadFile(array("./modules/admin/tpl/css/admin_{$lang_type}.css", '', '', 10), true);
 			Context::loadFile(array("./modules/admin/tpl/css/admin.iefix.css", '', 'ie', 10), true);
 			Context::loadFile('./modules/admin/tpl/js/admin.js', true);
 			Context::loadFile(array('./modules/admin/tpl/css/admin.bootstrap.css', '', '', 1), true);
@@ -429,7 +559,7 @@ class HTMLDisplayHandler
 	 */
 	private function _loadCommonJSCSS()
 	{
-		Context::loadFile(array('./common/css/xe.css', '', '', -1600000), true);
+		Context::loadFile(array('./common/css/rhymix.scss', '', '', -1600000), true);
 		$original_file_list = array('x', 'common', 'js_app', 'xml_handler', 'xml_js_filter');
 		$jquery_version = preg_match('/MSIE [5-8]\./', $_SERVER['HTTP_USER_AGENT']) ? '1.11.3' : '2.1.4';
 		
@@ -446,14 +576,14 @@ class HTMLDisplayHandler
 		{
 			Context::loadFile(array('./common/js/jquery-' . $jquery_version . '.min.js', 'head', '', -1730000), true);
 			Context::loadFile(array('./common/js/plugins/jquery.migrate/jquery-migrate-1.2.1.min.js', 'head', '', -1720000), true);
-			$concat_target_filename = 'files/cache/minify/xe.min.js';
-			if(file_exists(_XE_PATH_ . $concat_target_filename))
+			$concat_target_filename = 'files/cache/assets/minified/rhymix.min.js';
+			if(file_exists(\RX_BASEDIR . $concat_target_filename))
 			{
-				$concat_target_mtime = filemtime(_XE_PATH_ . $concat_target_filename);
+				$concat_target_mtime = filemtime(\RX_BASEDIR . $concat_target_filename);
 				$original_mtime = 0;
 				foreach($original_file_list as $filename)
 				{
-					$original_mtime = max($original_mtime, filemtime(_XE_PATH_ . 'common/js/' . $filename . '.js'));
+					$original_mtime = max($original_mtime, filemtime(\RX_BASEDIR . 'common/js/' . $filename . '.js'));
 				}
 				if($concat_target_mtime > $original_mtime)
 				{
@@ -461,12 +591,9 @@ class HTMLDisplayHandler
 					return;
 				}
 			}
-			$minifier = new MatthiasMullie\Minify\JS();
-			foreach($original_file_list as $filename)
-			{
-				$minifier->add(_XE_PATH_ . 'common/js/' . $filename . '.js');
-			}
-			FileHandler::writeFile(_XE_PATH_ . $concat_target_filename, $minifier->execute());
+			Rhymix\Framework\Formatter::minifyJS(array_map(function($str) {
+				return \RX_BASEDIR . 'common/js/' . $str . '.js';
+			}, $original_file_list), \RX_BASEDIR . $concat_target_filename);
 			Context::loadFile(array('./' . $concat_target_filename, 'head', '', -100000), true);
 		}
 	}

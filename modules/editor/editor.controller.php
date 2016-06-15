@@ -47,20 +47,20 @@ class editorController extends editor
 	{
 		$component = Context::get('component');
 		$method = Context::get('method');
-		if(!$component) return new Object(-1, sprintf(Context::getLang('msg_component_is_not_founded'), $component));
+		if(!$component) return new Object(-1, sprintf(lang('msg_component_is_not_founded'), $component));
 
 		$oEditorModel = getModel('editor');
 		$oComponent = &$oEditorModel->getComponentObject($component);
 		if(!$oComponent->toBool()) return $oComponent;
 
-		if(!method_exists($oComponent, $method)) return new Object(-1, sprintf(Context::getLang('msg_component_is_not_founded'), $component));
+		if(!method_exists($oComponent, $method)) return new Object(-1, sprintf(lang('msg_component_is_not_founded'), $component));
 
 		//$output = call_user_method($method, $oComponent);
 		//$output = call_user_func(array($oComponent, $method));
 		if(method_exists($oComponent, $method)) $output = $oComponent->{$method}();
 		else return new Object(-1,sprintf('%s method is not exists', $method));
 
-		if((is_a($output, 'Object') || is_subclass_of($output, 'Object')) && !$output->toBool()) return $output;
+		if($output instanceof Object && !$output->toBool()) return $output;
 
 		$this->setError($oComponent->getError());
 		$this->setMessage($oComponent->getMessage());
@@ -86,6 +86,8 @@ class editorController extends editor
 		else $module_srl = array($module_srl);
 
 		$editor_config = new stdClass;
+		$editor_config->default_editor_settings = Context::get('default_editor_settings');
+		if($editor_config->default_editor_settings !== 'Y') $editor_config->default_editor_settings = 'N';
 		$editor_config->editor_skin = Context::get('editor_skin');
 		$editor_config->comment_editor_skin = Context::get('comment_editor_skin');
 		$editor_config->content_style = Context::get('content_style');
@@ -157,8 +159,15 @@ class editorController extends editor
 		$module_srl = $module_info->module_srl;
 		if($module_srl)
 		{
-			$oEditorModel = getModel('editor');
-			$editor_config = $oEditorModel->getEditorConfig($module_srl);
+			$editor_config = getModel('editor')->getEditorConfig($module_srl);
+		}
+		else
+		{
+			$editor_config = getModel('module')->getModuleConfig('editor');
+		}
+		
+		if ($editor_config)
+		{
 			$content_style = $editor_config->content_style;
 			if($content_style)
 			{
@@ -182,17 +191,53 @@ class editorController extends editor
 					}
 				}
 			}
-			$content_font = $editor_config->content_font;
-			$content_font_size = $editor_config->content_font_size;
-			if($content_font || $content_font_size)
+			
+			Context::set('default_font_config', array(
+				'default_font_family' => $editor_config->content_font ?: 'inherit',
+				'default_font_size' => $editor_config->content_font_size ?: '13px',
+				'default_line_height' => $editor_config->content_line_height ?: '160%',
+				'default_paragraph_spacing' => $editor_config->content_paragraph_spacing ?: '0',
+				'default_word_break' => $editor_config->content_word_break ?: 'normal',
+			));
+			
+			/*
+			$buff = array();
+			$buff[] = '<style> .xe_content {';
+			if ($content_font)
 			{
-				$buff = array();
-				$buff[] = '<style> .xe_content { ';
-				if($content_font) $buff[] = 'font-family:'.$content_font.';';
-				if($content_font_size) $buff[] = 'font-size:'.$content_font_size.';';
-				$buff[] = ' }</style>';
-				Context::addHtmlHeader(implode('', $buff));
+				$buff[] = "font-family: $content_font;";
 			}
+			if ($content_font_size)
+			{
+				$buff[] = "font-size: $content_font_size;";
+			}
+			if ($content_line_height)
+			{
+				$buff[] = "line-height: $content_line_height;";
+			}
+			if ($content_word_break === 'none')
+			{
+				$buff[] = 'white-space: nowrap;';
+			}
+			else
+			{
+				$buff[] = 'word-break: ' . ($content_word_break ?: 'normal') . '; word-wrap: break-word;';
+			}
+			$buff[] = '}';
+			$buff[] = '.xe_content p { margin: 0 0 ' . ($content_paragraph_spacing ?: 0) . ' 0; }';
+			$buff[] = '</style>';
+			Context::addHtmlHeader(implode(' ', $buff));
+			*/
+		}
+		else
+		{
+			Context::set('default_font_config', array(
+				'default_font_family' => 'inherit',
+				'default_font_size' => '13px',
+				'default_line_height' => '160%',
+				'default_paragraph_spacing' => '0',
+				'default_word_break' => 'normal',
+			));
 		}
 
 		$content = $this->transComponent($content);

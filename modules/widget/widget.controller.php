@@ -12,9 +12,6 @@ class widgetController extends widget
 	var $javascript_mode = false;
 	var $layout_javascript_mode = false;
 
-	// Where the cache files are created widget
-	var $cache_path = './files/cache/widget_cache/';
-
 	/**
 	 * @brief Initialization
 	 */
@@ -51,7 +48,7 @@ class widgetController extends widget
 	{
 		$widget = Context::get('selected_widget');
 		if(!$widget) return new Object(-1,'msg_invalid_request');
-		if(!Context::get('skin')) return new Object(-1,Context::getLang('msg_widget_skin_is_null'));
+		if(!Context::get('skin')) return new Object(-1,lang('msg_widget_skin_is_null'));
 
 		$attribute = $this->arrangeWidgetVars($widget, Context::getRequestVars(), $vars);
 
@@ -68,7 +65,7 @@ class widgetController extends widget
 		$widget = Context::get('selected_widget');
 		if(!$widget) return new Object(-1,'msg_invalid_request');
 
-		if(!in_array($widget,array('widgetBox','widgetContent')) && !Context::get('skin')) return new Object(-1,Context::getLang('msg_widget_skin_is_null'));
+		if(!in_array($widget,array('widgetBox','widgetContent')) && !Context::get('skin')) return new Object(-1,lang('msg_widget_skin_is_null'));
 
 		$attribute = $this->arrangeWidgetVars($widget, Context::getRequestVars(), $vars);
 		// Wanted results
@@ -333,18 +330,20 @@ class widgetController extends widget
 			$widget = $args->widget;
 			$sequence = $args->widget_sequence;
 			$cache = $args->widget_cache;
-			if(!$sequence || !$cache) continue;
+			if(!$cache) continue;
+			if(!$sequence)
+			{
+				$sequence = sha1(json_encode($args));
+			}
 
 			if(count($args))
 			{
 				foreach($args as $k => $v) $args->{$k} = urldecode($v);
 			}
-			// If the cache file for each language widget regeneration
+			
 			foreach($lang_list as $lang_type => $val)
 			{
-				$cache_file = sprintf('%s%d.%s.cache', $this->cache_path, $sequence, $lang_type);
-				if(!file_exists($cache_file)) continue;
-				$this->getCache($widget, $args, $lang_type, true);
+				$this->getCache($widget, $args, $lang_type, true, $sequence);
 			}
 		}
 	}
@@ -352,18 +351,37 @@ class widgetController extends widget
 	/**
 	 * @brief Widget cache handling
 	 */
-	function getCache($widget, $args, $lang_type = null, $ignore_cache = false)
+	function getCache($widget, $args, $lang_type = null, $ignore_cache = false, $override_sequence = false)
 	{
-		// If the specified language specifies the current language
-		if(!$lang_type) $lang_type = Context::getLangType();
-		// widget, the cache number and cache values are set
-		$widget_sequence = $args->widget_sequence;
+		// Use the current language if not otherwise specified
+		if (!$lang_type)
+		{
+			$lang_type = Context::getLangType();
+		}
+		
+		// Fix the widget sequence if it is missing
+		$widget_sequence = $override_sequence ?: $args->widget_sequence;
+		if (!$widget_sequence)
+		{
+			$widget_sequence = sha1(json_encode($args));
+		}
+		
+		// Set the widget cache duration
 		$widget_cache = $args->widget_cache;
+		if (preg_match('/^([0-9\.]+)([smhd])$/i', $widget_cache, $matches))
+		{
+			$multipliers = array('s' => 1, 'm' => 60, 'h' => 3600, 'd' => 86400);
+			$widget_cache = intval(floatval($matches[1]) * $multipliers[strtolower($matches[2])]);
+		}
+		else
+		{
+			$widget_cache = intval(floatval($widget_cache) * 60);
+		}
 
 		/**
 		 * Even if the cache number and value of the cache and return it to extract data
 		 */
-		if(!$ignore_cache && (!$widget_cache || !$widget_sequence))
+		if(!$ignore_cache && !$widget_cache)
 		{
 			$oWidget = $this->getWidgetObject($widget);
 			if(!$oWidget || !method_exists($oWidget, 'proc')) return;
@@ -374,61 +392,20 @@ class widgetController extends widget
 			return $widget_content;
 		}
 
-		$oCacheHandler = CacheHandler::getInstance('template');
-		if($oCacheHandler->isSupport())
+		$cache_data = Rhymix\Framework\Cache::get('widget_cache:' . $widget_sequence);
+		if ($cache_data)
 		{
-			$key = 'widget_cache:' . $widget_sequence;
-
-			$cache_body = $oCacheHandler->get($key);
-			$cache_body = preg_replace('@<\!--#Meta:@', '<!--Meta:', $cache_body);
+			return preg_replace('@<\!--#Meta:@', '<!--Meta:', $cache_data);
 		}
 
-		if($cache_body)
-		{
-			return $cache_body;
-		}
-		else
-		{
-			/**
-			 * Cache number and cache values are set so that the cache file should call
-			 */
-			FileHandler::makeDir($this->cache_path);
-			// Wanted cache file
-			$cache_file = sprintf('%s%d.%s.cache', $this->cache_path, $widget_sequence, $lang_type);
-			// If the file exists in the cache, the file validation
-			if(!$ignore_cache && file_exists($cache_file))
-			{
-				$filemtime = filemtime($cache_file);
-				// Should be modified compared to the time of the cache or in the future if creating more than widget.controller.php file a return value of the cache
-				if($filemtime + $widget_cache * 60 > $_SERVER['REQUEST_TIME'] && $filemtime > filemtime(_XE_PATH_.'modules/widget/widget.controller.php'))
-				{
-					$cache_body = FileHandler::readFile($cache_file);
-					$cache_body = preg_replace('@<\!--#Meta:@', '<!--Meta:', $cache_body);
+		$oWidget = $this->getWidgetObject($widget);
+		if(!$oWidget || !method_exists($oWidget,'proc')) return;
 
-					return $cache_body;
-				}
-			}
-			// cache update and cache renewal of the file mtime
-			if(!$oCacheHandler->isSupport())
-			{
-			touch($cache_file);
-			}
-
-			$oWidget = $this->getWidgetObject($widget);
-			if(!$oWidget || !method_exists($oWidget,'proc')) return;
-
-			$widget_content = $oWidget->proc($args);
-			$oModuleController = getController('module');
-			$oModuleController->replaceDefinedLangCode($widget_content);
-			if($oCacheHandler->isSupport())
-			{
-				$oCacheHandler->put($key, $widget_content, $widget_cache * 60);
-			}
-			else
-			{
-				FileHandler::writeFile($cache_file, $widget_content);
-			}
-		}
+		$widget_content = $oWidget->proc($args);
+		$oModuleController = getController('module');
+		$oModuleController->replaceDefinedLangCode($widget_content);
+		
+		Rhymix\Framework\Cache::set('widget_cache:' . $widget_sequence, $widget_content, $widget_cache, true);
 
 		return $widget_content;
 	}
@@ -442,8 +419,8 @@ class widgetController extends widget
 	function execute($widget, $args, $javascript_mode = false, $escaped = true)
 	{
 		// Save for debug run-time widget
-		if(__DEBUG__==3) $start = microtime(true);
-		$before = microtime(true);
+		$start = microtime(true);
+		
 		// urldecode the value of args haejum
 		$object_vars = get_object_vars($args);
 		if(count($object_vars))
@@ -502,7 +479,7 @@ class widgetController extends widget
 					if($args->document_srl)
 					{
 						$oDocumentModel = getModel('document');
-						$oDocument = $oDocumentModel->getDocument($args->document_srl);
+						$oDocument = $oDocumentModel->getDocument($args->document_srl, false, false, false);
 						$body = $oDocument->getContent(false,false,false, false);
 					}
 					else
@@ -542,7 +519,7 @@ class widgetController extends widget
 					if($args->document_srl)
 					{
 						$oDocumentModel = getModel('document');
-						$oDocument = $oDocumentModel->getDocument($args->document_srl);
+						$oDocument = $oDocumentModel->getDocument($args->document_srl, false, false, false);
 						$body = $oDocument->getContent(false,false,false);
 					}
 					else
@@ -640,18 +617,14 @@ class widgetController extends widget
 		if($args->widgetstyle) $widget_content_body = $this->compileWidgetStyle($args->widgetstyle,$widget, $widget_content_body, $args, $javascript_mode);
 
 		$output = $widget_content_header . $widget_content_body . $widget_content_footer;
+
 		// Debug widget creation time information added to the results
-		if(__DEBUG__==3) $GLOBALS['__widget_excute_elapsed__'] += microtime(true) - $start;
-
-		$after = microtime(true);
-
-		$elapsed_time = $after - $before;
-
-		$slowlog = new stdClass;
-		$slowlog->caller = "widget.execute";
-		$slowlog->called = $widget;
-		$slowlog->called_extension = $widget;
-		writeSlowlog('widget', $elapsed_time, $slowlog);
+		$elapsed_time = microtime(true) - $start;
+		$GLOBALS['__widget_excute_elapsed__'] += $elapsed_time;
+		Rhymix\Framework\Debug::addWidget(array(
+			'name' => $widget,
+			'elapsed_time' => $elapsed_time,
+		));
 
 		// Return result
 		return $output;
@@ -664,7 +637,7 @@ class widgetController extends widget
 	{
 		if(!preg_match('/^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$/', $widget))
 		{
-			return Context::getLang('msg_invalid_request');
+			return lang('msg_invalid_request');
 		}
 
 		if(!$GLOBALS['_xe_loaded_widgets_'][$widget])
@@ -674,20 +647,20 @@ class widgetController extends widget
 			$path = $oWidgetModel->getWidgetPath($widget);
 			// If you do not find the class file error output widget (html output)
 			$class_file = sprintf('%s%s.class.php', $path, $widget);
-			if(!file_exists($class_file)) return sprintf(Context::getLang('msg_widget_is_not_exists'), $widget);
+			if(!file_exists($class_file)) return sprintf(lang('msg_widget_is_not_exists'), $widget);
 			// Widget classes include
 			require_once($class_file);
 
 			// Creating Objects
 			if(!class_exists($widget, false))
 			{
-				return sprintf(Context::getLang('msg_widget_object_is_null'), $widget);
+				return sprintf(lang('msg_widget_object_is_null'), $widget);
 			}
 
 			$oWidget = new $widget();
-			if(!is_object($oWidget)) return sprintf(Context::getLang('msg_widget_object_is_null'), $widget);
+			if(!is_object($oWidget)) return sprintf(lang('msg_widget_object_is_null'), $widget);
 
-			if(!method_exists($oWidget, 'proc')) return sprintf(Context::getLang('msg_widget_proc_is_null'), $widget);
+			if(!method_exists($oWidget, 'proc')) return sprintf(lang('msg_widget_proc_is_null'), $widget);
 
 			$oWidget->widget_path = $path;
 
@@ -755,6 +728,10 @@ class widgetController extends widget
 		$vars->colorset = trim($request_vars->colorset);
 		$vars->widget_sequence = (int)($request_vars->widget_sequence);
 		$vars->widget_cache = (int)($request_vars->widget_cache);
+		if($request_vars->widget_cache_unit && in_array($request_vars->widget_cache_unit, array('s', 'm', 'h', 'd')))
+		{
+			$vars->widget_cache .= $request_vars->widget_cache_unit;
+		}
 		$vars->style = trim($request_vars->style);
 		$vars->widget_padding_left = trim($request_vars->widget_padding_left);
 		$vars->widget_padding_right = trim($request_vars->widget_padding_right);
@@ -787,8 +764,7 @@ class widgetController extends widget
 
 		if($vars->widget_sequence)
 		{
-			$cache_file = sprintf('%s%d.%s.cache', $this->cache_path, $vars->widget_sequence, Context::getLangType());
-			FileHandler::removeFile($cache_file);
+			Rhymix\Framework\Cache::delete('widget_cache:' . $vars->widget_sequence);
 		}
 
 		if($vars->widget_cache>0) $vars->widget_sequence = getNextSequence();

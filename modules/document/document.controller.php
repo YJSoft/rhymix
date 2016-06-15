@@ -205,7 +205,7 @@ class documentController extends document
 
 		// if an user select message from options, message would be the option.
 		$message_option = strval(Context::get('message_option'));
-		$improper_document_reasons = Context::getLang('improper_document_reasons');
+		$improper_document_reasons = lang('improper_document_reasons');
 		$declare_message = ($message_option !== 'others' && isset($improper_document_reasons[$message_option]))?
 			$improper_document_reasons[$message_option] : trim(Context::get('declare_message'));
 
@@ -389,7 +389,7 @@ class documentController extends document
 			$obj->homepage = $logged_info->homepage;
 		}
 		// If the tile is empty, extract string from the contents.
-		$obj->title = htmlspecialchars($obj->title);
+		$obj->title = htmlspecialchars($obj->title, ENT_COMPAT | ENT_HTML401, 'UTF-8', false);
 		settype($obj->title, "string");
 		if($obj->title == '') $obj->title = cut_str(trim(strip_tags(nl2br($obj->content))),20,'...');
 		// If no tile extracted from the contents, leave it untitled.
@@ -439,6 +439,7 @@ class documentController extends document
 			return $output;
 		}
 		// Insert extra variables if the document successfully inserted.
+		$extra_vars = array();
 		$extra_keys = $oDocumentModel->getExtraKeys($obj->module_srl);
 		if(count($extra_keys))
 		{
@@ -449,13 +450,20 @@ class documentController extends document
 				{
 					$tmp = $obj->{'extra_vars'.$idx};
 					if(is_array($tmp))
+					{
 						$value = implode('|@|', $tmp);
+					}
 					else
+					{
 						$value = trim($tmp);
+					}
 				}
-				else if(isset($obj->{$extra_item->name})) $value = trim($obj->{$extra_item->name});
+				else if(isset($obj->{$extra_item->name}))
+				{
+					$value = trim($obj->{$extra_item->name});
+				}
 				if($value == NULL) continue;
-
+				$extra_vars[$extra_item->name] = $value;
 				$this->insertDocumentExtraVar($obj->module_srl, $obj->document_srl, $idx, $value, $extra_item->eid);
 			}
 		}
@@ -464,6 +472,17 @@ class documentController extends document
 		// Call a trigger (after)
 		if($output->toBool())
 		{
+			if($obj->update_log_setting === 'Y')
+			{
+				$obj->extra_vars = serialize($extra_vars);
+				$update_output = $this->insertDocumentUpdateLog($obj);
+
+				if(!$update_output->toBool())
+				{
+					$oDB->rollback();
+					return $update_output;
+				}
+			}
 			$trigger_output = ModuleHandler::triggerCall('document.insertDocument', 'after', $obj);
 			if(!$trigger_output->toBool())
 			{
@@ -517,6 +536,8 @@ class documentController extends document
 		$oModuleModel = getModel('module');
 		if(!$obj->module_srl) $obj->module_srl = $source_obj->get('module_srl');
 		$module_srl = $obj->module_srl;
+		$module_info = $oModuleModel->getModuleInfoByModuleSrl($module_srl);
+
 		$document_config = $oModuleModel->getModulePartConfig('document', $module_srl);
 		if(!$document_config)
 		{
@@ -587,10 +608,11 @@ class documentController extends document
 		{
 			$obj->password = getModel('member')->hashPassword($obj->password);
 		}
+
 		// If an author is identical to the modifier or history is used, use the logged-in user's information.
-		if(Context::get('is_logged'))
+		$logged_info = Context::get('logged_info');
+		if(Context::get('is_logged') && !$manual_updated && $module_info->use_anonymous != 'Y')
 		{
-			$logged_info = Context::get('logged_info');
 			if($source_obj->get('member_srl')==$logged_info->member_srl)
 			{
 				$obj->member_srl = $logged_info->member_srl;
@@ -600,6 +622,7 @@ class documentController extends document
 				$obj->homepage = $logged_info->homepage;
 			}
 		}
+
 		// For the document written by logged-in user however no nick_name exists
 		if($source_obj->get('member_srl')&& !$obj->nick_name)
 		{
@@ -610,7 +633,7 @@ class documentController extends document
 			$obj->homepage = $source_obj->get('homepage');
 		}
 		// If the tile is empty, extract string from the contents.
-		$obj->title = htmlspecialchars($obj->title);
+		$obj->title = htmlspecialchars($obj->title, ENT_COMPAT | ENT_HTML401, 'UTF-8', false);
 		settype($obj->title, "string");
 		if($obj->title == '') $obj->title = cut_str(strip_tags($obj->content),20,'...');
 		// If no tile extracted from the contents, leave it untitled.
@@ -647,6 +670,7 @@ class documentController extends document
 			// Change not extra vars but language code of the original document if document's lang_code doesn't exist.
 			if(!$source_obj->get('lang_code'))
 			{
+				$lang_code_args = new stdClass();
 				$lang_code_args->document_srl = $source_obj->get('document_srl');
 				$lang_code_args->lang_code = Context::getLangType();
 				$output = executeQuery('document.updateDocumentsLangCode', $lang_code_args);
@@ -683,7 +707,9 @@ class documentController extends document
 			$oDB->rollback();
 			return $output;
 		}
+
 		// Remove all extra variables
+		$extra_vars = array();
 		if(Context::get('act')!='procFileDelete')
 		{
 			$this->deleteDocumentExtraVars($source_obj->get('module_srl'), $obj->document_srl, null, Context::getLangType());
@@ -704,6 +730,7 @@ class documentController extends document
 					}
 					else if(isset($obj->{$extra_item->name})) $value = trim($obj->{$extra_item->name});
 					if($value == NULL) continue;
+					$extra_vars[$extra_item->name] = $value;
 					$this->insertDocumentExtraVar($obj->module_srl, $obj->document_srl, $idx, $value, $extra_item->eid);
 				}
 			}
@@ -720,6 +747,20 @@ class documentController extends document
 		// Call a trigger (after)
 		if($output->toBool())
 		{
+			if($obj->update_log_setting === 'Y')
+			{
+				$obj->extra_vars = serialize($extra_vars);
+				if($this->grant->manager)
+				{
+					$obj->is_admin = 'Y';
+				}
+				$update_output = $this->insertDocumentUpdateLog($obj, $source_obj);
+				if(!$update_output->toBool())
+				{
+					$oDB->rollback();
+					return $update_output;
+				}
+			}
 			$trigger_output = ModuleHandler::triggerCall('document.updateDocument', 'after', $obj);
 			if(!$trigger_output->toBool())
 			{
@@ -734,16 +775,50 @@ class documentController extends document
 		FileHandler::removeDir(sprintf('files/thumbnails/%s',getNumberingPath($obj->document_srl, 3)));
 
 		$output->add('document_srl',$obj->document_srl);
+		
 		//remove from cache
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($obj->document_srl) . $obj->document_srl);
+		return $output;
+	}
+
+	function insertDocumentUpdateLog($obj, $source_obj = null)
+	{
+		$update_args = new stdClass();
+		$logged_info = Context::get('logged_info');
+		if($source_obj === null)
 		{
-			//remove document item from cache
-			$cache_key = 'document_item:'. getNumberingPath($obj->document_srl) . $obj->document_srl;
-			$oCacheHandler->delete($cache_key);
+			$update_args->category_srl = $obj->category_srl;
+			$update_args->module_srl = $obj->module_srl;
+			$update_args->nick_name = $obj->nick_name;
+		}
+		else
+		{
+			if($obj->category_srl)
+			{
+				$update_args->category_srl = $obj->category_srl;
+			}
+			else
+			{
+				$update_args->category_srl = $source_obj->get('category_srl');
+			}
+			$update_args->module_srl = $source_obj->get('module_srl');
+			$update_args->nick_name = $source_obj->get('nick_name');
 		}
 
-		return $output;
+		$update_args->document_srl = $obj->document_srl;
+		$update_args->update_member_srl = $logged_info->member_srl;
+		$update_args->title = $obj->title;
+		$update_args->title_bold = $obj->title_bold;
+		$update_args->title_color = $obj->title_color;
+		$update_args->content = $obj->content;
+		$update_args->update_nick_name = $logged_info->nick_name;
+		$update_args->tags = $obj->tags;
+		$update_args->extra_vars = $obj->extra_vars;
+		$update_args->reason_update = $obj->reason_update;
+		$update_args->is_admin = $obj->is_admin;
+		$update_output = executeQuery('document.insertDocumentUpdateLog', $update_args);
+
+		return $update_output;
 	}
 
 	/**
@@ -829,6 +904,7 @@ class documentController extends document
 		$this->_deleteDeclaredDocuments($args);
 		$this->_deleteDocumentReadedLog($args);
 		$this->_deleteDocumentVotedLog($args);
+		$this->_deleteDocumentUpdateLog($args);
 
 		// Remove the thumbnail file
 		FileHandler::removeDir(sprintf('files/thumbnails/%s',getNumberingPath($document_srl, 3)));
@@ -837,13 +913,7 @@ class documentController extends document
 		$oDB->commit();
 
 		//remove from cache
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
-		{
-			$cache_key = 'document_item:'. getNumberingPath($document_srl) . $document_srl;
-			$oCacheHandler->delete($cache_key);
-		}
-
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($document_srl) . $document_srl);
 		return $output;
 	}
 
@@ -876,6 +946,11 @@ class documentController extends document
 	function _deleteDocumentVotedLog($documentSrls)
 	{
 		executeQuery('document.deleteDocumentVotedLog', $documentSrls);
+	}
+
+	function _deleteDocumentUpdateLog($document_srl)
+	{
+		executeQuery('document.deleteDocumentUpdateLog', $document_srl);
 	}
 
 	/**
@@ -993,13 +1068,7 @@ class documentController extends document
 		$oDB->commit();
 
 		// Clear cache
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
-		{
-			$cache_key = 'document_item:'. getNumberingPath($oDocument->document_srl) . $oDocument->document_srl;
-			$oCacheHandler->delete($cache_key);
-		}
-
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($oDocument->document_srl) . $oDocument->document_srl);
 		return $output;
 	}
 
@@ -1011,7 +1080,11 @@ class documentController extends document
 	function updateReadedCount(&$oDocument)
 	{
 		// Pass if Crawler access
-		if(isCrawler()) return false;
+		if (\Rhymix\Framework\UA::isRobot())
+		{
+			return false;
+		}
+		
 		$oDocumentModel = getModel('document');
 		$config = $oDocumentModel->getDocumentConfig();
 
@@ -1071,13 +1144,8 @@ class documentController extends document
 
 		$oDB->commit();
 
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
-		{
-			//remove document item from cache
-			$cache_key = 'document_item:'. getNumberingPath($document_srl) . $document_srl;
-			$oCacheHandler->delete($cache_key);
-		}
+		//remove document item from cache
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($document_srl) . $document_srl);
 
 		// Register session
 		if(!$_SESSION['banned_document'][$document_srl] && Context::getSessionStatus()) 
@@ -1128,14 +1196,7 @@ class documentController extends document
 			$output = executeQuery('document.updateDocumentExtraVar', $obj);
 		}
 
-		$oCacheHandler = CacheHandler::getInstance('object', NULL, TRUE);
-		if($oCacheHandler->isSupport())
-		{
-			$object_key = 'module_document_extra_keys:'.$module_srl;
-			$cache_key = $oCacheHandler->getGroupKey('site_and_module', $object_key);
-			$oCacheHandler->delete($cache_key);
-		}
-
+		Rhymix\Framework\Cache::delete("site_and_module:module_document_extra_keys:$module_srl");
 		return $output;
 	}
 
@@ -1191,14 +1252,7 @@ class documentController extends document
 
 		$oDB->commit();
 
-		$oCacheHandler = CacheHandler::getInstance('object', NULL, TRUE);
-		if($oCacheHandler->isSupport())
-		{
-			$object_key = 'module_document_extra_keys:'.$module_srl;
-			$cache_key = $oCacheHandler->getGroupKey('site_and_module', $object_key);
-			$oCacheHandler->delete($cache_key);
-		}
-
+		Rhymix\Framework\Cache::delete("site_and_module:module_document_extra_keys:$module_srl");
 		return new Object();
 	}
 
@@ -1271,7 +1325,7 @@ class documentController extends document
 		// Pass if the author's IP address is as same as visitor's.
 		if($oDocument->get('ipaddress') == $_SERVER['REMOTE_ADDR'])
 		{
-			$_SESSION['voted_document'][$document_srl] = true;
+			$_SESSION['voted_document'][$document_srl] = false;
 			return new Object(-1, $failed_voted);
 		}
 
@@ -1285,7 +1339,7 @@ class documentController extends document
 			// Pass after registering a session if author's information is same as the currently logged-in user's.
 			if($member_srl && $member_srl == $oDocument->get('member_srl'))
 			{
-				$_SESSION['voted_document'][$document_srl] = true;
+				$_SESSION['voted_document'][$document_srl] = false;
 				return new Object(-1, $failed_voted);
 			}
 		}
@@ -1305,7 +1359,7 @@ class documentController extends document
 		// Pass after registering a session if log information has vote-up logs
 		if($output->data->count)
 		{
-			$_SESSION['voted_document'][$document_srl] = true;
+			$_SESSION['voted_document'][$document_srl] = false;
 			return new Object(-1, $failed_voted);
 		}
 
@@ -1351,13 +1405,8 @@ class documentController extends document
 
 		$oDB->commit();
 
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
-		{
-			//remove document item from cache
-			$cache_key = 'document_item:'. getNumberingPath($document_srl) . $document_srl;
-			$oCacheHandler->delete($cache_key);
-		}
+		//remove document item from cache
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($document_srl) . $document_srl);
 
 		// Return result
 		$output = new Object();
@@ -1526,13 +1575,8 @@ class documentController extends document
 			$args->update_order = -1*getNextSequence();
 			$args->last_updater = $last_updater;
 
-			$oCacheHandler = CacheHandler::getInstance('object');
-			if($oCacheHandler->isSupport())
-			{
-				//remove document item from cache
-				$cache_key = 'document_item:'. getNumberingPath($document_srl) . $document_srl;
-				$oCacheHandler->delete($cache_key);
-			}
+			// remove document item from cache
+			Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($document_srl) . $document_srl);
 		}
 
 		return executeQuery('document.updateCommentCount', $args);
@@ -1550,13 +1594,8 @@ class documentController extends document
 		$args->document_srl = $document_srl;
 		$args->trackback_count = $trackback_count;
 
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
-		{
-			//remove document item from cache
-			$cache_key = 'document_item:'. getNumberingPath($document_srl) . $document_srl;
-			$oCacheHandler->delete($cache_key);
-		}
+		// remove document item from cache
+		Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($document_srl) . $document_srl);
 
 		return executeQuery('document.updateTrackbackCount', $args);
 	}
@@ -1661,27 +1700,25 @@ class documentController extends document
 		if(!$output->toBool()) return $output;
 
 		$this->makeCategoryFile($category_info->module_srl);
-		// remvove cache
-		$oCacheHandler = CacheHandler::getInstance('object');
-		if($oCacheHandler->isSupport())
+		
+		// remove cache
+		$page = 0;
+		while(true)
 		{
-			$page = 0;
-			while(true) {
-				$args = new stdClass();
-				$args->category_srl = $category_srl;
-				$args->list_count = 100;
-				$args->page = ++$page;
-				$output = executeQuery('document.getDocumentList', $args, array('document_srl'));
+			$args = new stdClass();
+			$args->category_srl = $category_srl;
+			$args->list_count = 100;
+			$args->page = ++$page;
+			$output = executeQuery('document.getDocumentList', $args, array('document_srl'));
 
-				if($output->data == array())
-					break;
+			if($output->data == array())
+			{
+				break;
+			}
 
-				foreach($output->data as $val)
-				{
-					//remove document item from cache
-					$cache_key = 'document_item:'. getNumberingPath($val->document_srl) . $val->document_srl;
-					$oCacheHandler->delete($cache_key);
-				}
+			foreach($output->data as $val)
+			{
+				Rhymix\Framework\Cache::delete('document_item:' . getNumberingPath($val->document_srl) . $val->document_srl);
 			}
 		}
 
@@ -1735,9 +1772,9 @@ class documentController extends document
 			$prev_category = $val;
 		}
 		// Return if the previous category doesn't exist
-		if(!$prev_category) return new Object(-1,Context::getLang('msg_category_not_moved'));
+		if(!$prev_category) return new Object(-1,lang('msg_category_not_moved'));
 		// Return if the selected category is the top level
-		if($category_srl_list[0]==$category_srl) return new Object(-1,Context::getLang('msg_category_not_moved'));
+		if($category_srl_list[0]==$category_srl) return new Object(-1,lang('msg_category_not_moved'));
 		// Information of the selected category
 		$cur_args = new stdClass;
 		$cur_args->category_srl = $category_srl;
@@ -1781,7 +1818,7 @@ class documentController extends document
 		}
 
 		$next_category_srl = $category_srl_list[$i+1];
-		if(!$category_list[$next_category_srl]) return new Object(-1,Context::getLang('msg_category_not_moved'));
+		if(!$category_list[$next_category_srl]) return new Object(-1,lang('msg_category_not_moved'));
 		$next_category = $category_list[$next_category_srl];
 		// Information of the selected category
 		$cur_args = new stdClass;
@@ -2450,10 +2487,10 @@ class documentController extends document
 		{
 			$logged_info = Context::get('logged_info');
 			$message_content = '';
-			$default_message_verbs = Context::getLang('default_message_verbs');
+			$default_message_verbs = lang('default_message_verbs');
 			if(isset($default_message_verbs[$type]) && is_string($default_message_verbs[$type]))
 			{
-				$message_content = sprintf(Context::getLang('default_message_format'), $logged_info->nick_name, $default_message_verbs[$type]);
+				$message_content = sprintf(lang('default_message_format'), $logged_info->nick_name, $default_message_verbs[$type]);
 			}
 		}
 		else

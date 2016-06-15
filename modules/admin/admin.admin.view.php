@@ -40,7 +40,7 @@ class adminAdminView extends admin
 		$logged_info = $oMemberModel->getLoggedInfo();
 		if($logged_info->is_admin != 'Y')
 		{
-			return $this->stop("msg_is_not_administrator");
+			return $this->stop("admin.msg_is_not_administrator");
 		}
 
 		// change into administration layout
@@ -50,10 +50,45 @@ class adminAdminView extends admin
 
 		$this->makeGnbUrl();
 
+		// Check system configuration
+		$this->checkSystemConfiguration();
+		
 		// Retrieve the list of installed modules
 		$this->checkEasyinstall();
 	}
 
+	/**
+	 * check system configuration
+	 * @return void
+	 */
+	function checkSystemConfiguration()
+	{
+		$changed = false;
+		
+		// Check encryption keys.
+		if (config('crypto.encryption_key') === null)
+		{
+			config('crypto.encryption_key', Rhymix\Framework\Security::getRandom(64, 'alnum'));
+			$changed = true;
+		}
+		if (config('crypto.authentication_key') === null)
+		{
+			config('crypto.authentication_key', Rhymix\Framework\Security::getRandom(64, 'alnum'));
+			$changed = true;
+		}
+		if (config('crypto.session_key') === null)
+		{
+			config('crypto.session_key', Rhymix\Framework\Security::getRandom(64, 'alnum'));
+			$changed = true;
+		}
+		
+		// Save new configuration.
+		if ($changed)
+		{
+			Rhymix\Framework\Config::save();
+		}
+	}
+	
 	/**
 	 * check easy install
 	 * @return void
@@ -129,14 +164,15 @@ class adminAdminView extends admin
 		$currentAct = Context::get('act');
 		$subMenuTitle = '';
 
-		foreach((array) $moduleActionInfo->menu as $key => $value)
+		foreach((array)$moduleActionInfo->menu as $key => $value)
 		{
-			if(isset($value->acts) && is_array($value->acts) && in_array($currentAct, $value->acts))
+			if(is_array($value->acts) && in_array($currentAct, $value->acts))
 			{
 				$subMenuTitle = $value->title;
 				break;
 			}
 		}
+		
 		// get current menu's srl(=parentSrl)
 		$parentSrl = 0;
 		$oMenuAdminConroller = getAdminController('menu');
@@ -167,7 +203,7 @@ class adminAdminView extends admin
 		$gnbTitleInfo->adminTitle = $objConfig->adminTitle ? $objConfig->adminTitle : 'Admin';
 		$gnbTitleInfo->adminLogo = $objConfig->adminLogo ? $objConfig->adminLogo : '';
 
-		$browserTitle = ($subMenuTitle ? $subMenuTitle : 'Dashboard') . ' - ' . $gnbTitleInfo->adminTitle;
+		$browserTitle = $gnbTitleInfo->adminTitle . ' - ' . ($subMenuTitle ? $subMenuTitle : 'Dashboard');
 
 		// Get list of favorite
 		$oAdminAdminModel = getAdminModel('admin');
@@ -219,7 +255,7 @@ class adminAdminView extends admin
 		Context::set('gnbUrlList', $menu->list);
 		Context::set('parentSrl', $parentSrl);
 		Context::set('gnb_title_info', $gnbTitleInfo);
-		Context::setBrowserTitle($browserTitle);
+		Context::addBrowserTitle($browserTitle);
 	}
 
 	/**
@@ -301,7 +337,7 @@ class adminAdminView extends admin
 		{
 			foreach($needUpdateList AS $key => $value)
 			{
-				$helpUrl = './common/manual/admin/#';
+				$helpUrl = './common/manual/admin/index.html#';
 				switch($value->type)
 				{
 					case 'addon':
@@ -375,36 +411,36 @@ class adminAdminView extends admin
 		Context::set('supported_lang', Rhymix\Framework\Lang::getSupportedList());
 		Context::set('default_lang', Rhymix\Framework\Config::get('locale.default_lang'));
 		Context::set('enabled_lang', Rhymix\Framework\Config::get('locale.enabled_lang'));
+		Context::set('auto_select_lang', Rhymix\Framework\Config::get('locale.auto_select_lang'));
 		
 		// Site title and HTML footer
 		$oModuleModel = getModel('module');
 		$config = $oModuleModel->getModuleConfig('module');
-		Context::set('site_title', escape($config->siteTitle));
-		Context::set('html_footer', escape($config->htmlFooter));
+		Context::set('var_site_title', escape($config->siteTitle));
+		Context::set('var_site_subtitle', escape($config->siteSubtitle));
+		Context::set('all_html_footer', escape($config->htmlFooter));
 		
 		// Index module
 		$columnList = array('modules.mid', 'modules.browser_title', 'sites.index_module_srl');
 		$start_module = $oModuleModel->getSiteInfo(0, $columnList);
 		Context::set('start_module', $start_module);
 		
-		// Thumbnail settings
-		$oDocumentModel = getModel('document');
-		$config = $oDocumentModel->getDocumentConfig();
-		Context::set('thumbnail_type', $config->thumbnail_type ?: 'crop');
-		
 		// Default time zone
 		Context::set('timezones', Rhymix\Framework\DateTime::getTimezoneList());
 		Context::set('selected_timezone', Rhymix\Framework\Config::get('locale.default_timezone'));
 		
 		// Mobile view
-		Context::set('use_mobile_view', config('use_mobile_view') ? 'Y' : 'N');
+		Context::set('use_mobile_view', (config('mobile.enabled') !== null ? config('mobile.enabled') : config('use_mobile_view')) ? true : false);
+		Context::set('tablets_as_mobile', config('mobile.tablets') ? true : false);
 		
-		// Favicon and mobicon
+		// Favicon and mobicon and site default image
 		$oAdminModel = getAdminModel('admin');
-		$favicon_url = $oAdminModel->getFaviconUrl();
-		$mobicon_url = $oAdminModel->getMobileIconUrl();
-		Context::set('favicon_url', $favicon_url.'?'.$_SERVER['REQUEST_TIME']);
-		Context::set('mobicon_url', $mobicon_url.'?'.$_SERVER['REQUEST_TIME']);
+		$favicon_url = $oAdminModel->getFaviconUrl(false) ?: $oAdminModel->getFaviconUrl();
+		$mobicon_url = $oAdminModel->getMobileIconUrl(false) ?: $oAdminModel->getMobileIconUrl();
+		$site_default_image_url = $oAdminModel->getSiteDefaultImageUrl();
+		Context::set('favicon_url', $favicon_url);
+		Context::set('mobicon_url', $mobicon_url);
+		Context::set('site_default_image_url', $site_default_image_url);
 		
 		$this->setTemplateFile('config_general');
 	}
@@ -416,9 +452,8 @@ class adminAdminView extends admin
 	function dispAdminConfigSecurity()
 	{
 		// Load embed filter.
-		$oEmbedFilter = EmbedFilter::getInstance();
-		context::set('embedfilter_iframe', implode(PHP_EOL, $oEmbedFilter->whiteIframeUrlList));
-		context::set('embedfilter_object', implode(PHP_EOL, $oEmbedFilter->whiteUrlList));
+		context::set('mediafilter_iframe', implode(PHP_EOL, Rhymix\Framework\Filters\MediaFilter::getIframeWhitelist()));
+		context::set('mediafilter_object', implode(PHP_EOL, Rhymix\Framework\Filters\MediaFilter::getObjectWhitelist()));
 		
 		// Admin IP access control
 		$allowed_ip = Rhymix\Framework\Config::get('admin.allow');
@@ -449,16 +484,110 @@ class adminAdminView extends admin
 		Context::set('http_port', Rhymix\Framework\Config::get('url.http_port'));
 		Context::set('https_port', Rhymix\Framework\Config::get('url.https_port'));
 		
+		// Object cache
+		$object_cache_types = Rhymix\Framework\Cache::getSupportedDrivers();
+		$object_cache_type = Rhymix\Framework\Config::get('cache.type');
+		if ($object_cache_type)
+		{
+			$cache_default_ttl = Rhymix\Framework\Config::get('cache.ttl');
+			$cache_servers = Rhymix\Framework\Config::get('cache.servers');
+		}
+		else
+		{
+			$cache_config = array_first(Rhymix\Framework\Config::get('cache'));
+			if ($cache_config)
+			{
+				$object_cache_type = preg_replace('/^memcache$/', 'memcached', preg_replace('/:.+$/', '', $cache_config));
+			}
+			else
+			{
+				$object_cache_type = 'dummy';
+			}
+			$cache_default_ttl = 86400;
+			$cache_servers = Rhymix\Framework\Config::get('cache');
+		}
+		
+		Context::set('object_cache_types', $object_cache_types);
+		Context::set('object_cache_type', $object_cache_type);
+		Context::set('cache_default_ttl', $cache_default_ttl);
+		
+		if ($cache_servers)
+		{
+			Context::set('object_cache_host', parse_url(array_first($cache_servers), PHP_URL_HOST) ?: null);
+			Context::set('object_cache_port', parse_url(array_first($cache_servers), PHP_URL_PORT) ?: null);
+		}
+		else
+		{
+			Context::set('object_cache_host', null);
+			Context::set('object_cache_port', null);
+		}
+		
+		// Thumbnail settings
+		$oDocumentModel = getModel('document');
+		$config = $oDocumentModel->getDocumentConfig();
+		Context::set('thumbnail_type', $config->thumbnail_type ?: 'crop');
+		
 		// Other settings
-		Context::set('use_mobile_view', Rhymix\Framework\Config::get('use_mobile_view'));
 		Context::set('use_rewrite', Rhymix\Framework\Config::get('use_rewrite'));
 		Context::set('use_sso', Rhymix\Framework\Config::get('use_sso'));
 		Context::set('delay_session', Rhymix\Framework\Config::get('session.delay'));
 		Context::set('use_db_session', Rhymix\Framework\Config::get('session.use_db'));
 		Context::set('minify_scripts', Rhymix\Framework\Config::get('view.minify_scripts'));
+		Context::set('concat_scripts', Rhymix\Framework\Config::get('view.concat_scripts'));
+		Context::set('use_server_push', Rhymix\Framework\Config::get('view.server_push'));
 		Context::set('use_gzip', Rhymix\Framework\Config::get('view.gzip'));
 		
 		$this->setTemplateFile('config_advanced');
+	}
+	
+	/**
+	 * Display Debug Settings page
+	 * @return void
+	 */
+	function dispAdminConfigDebug()
+	{
+		// Load debug settings.
+		Context::set('debug_enabled', Rhymix\Framework\Config::get('debug.enabled'));
+		Context::set('debug_log_slow_queries', Rhymix\Framework\Config::get('debug.log_slow_queries'));
+		Context::set('debug_log_slow_triggers', Rhymix\Framework\Config::get('debug.log_slow_triggers'));
+		Context::set('debug_log_slow_widgets', Rhymix\Framework\Config::get('debug.log_slow_widgets'));
+		Context::set('debug_log_filename', Rhymix\Framework\Config::get('debug.log_filename') ?: 'files/debug/YYYYMMDD.php');
+		Context::set('debug_display_type', Rhymix\Framework\Config::get('debug.display_type'));
+		Context::set('debug_display_content', Rhymix\Framework\Config::get('debug.display_content'));
+		Context::set('debug_display_to', Rhymix\Framework\Config::get('debug.display_to'));
+		
+		// IP access control
+		$allowed_ip = Rhymix\Framework\Config::get('debug.allow');
+		Context::set('debug_allowed_ip', implode(PHP_EOL, $allowed_ip));
+		Context::set('remote_addr', RX_CLIENT_IP);
+		
+		$this->setTemplateFile('config_debug');
+	}
+	
+	/**
+	 * Display Debug Settings page
+	 * @return void
+	 */
+	function dispAdminConfigSEO()
+	{
+		// Meta keywords and description
+		$oModuleModel = getModel('module');
+		$config = $oModuleModel->getModuleConfig('module');
+		Context::set('site_meta_keywords', escape($config->meta_keywords));
+		Context::set('site_meta_description', escape($config->meta_description));
+		
+		// Titles
+		Context::set('seo_main_title', escape(Rhymix\Framework\Config::get('seo.main_title') ?: '$SITE_TITLE - $SITE_SUBTITLE'));
+		Context::set('seo_subpage_title', escape(Rhymix\Framework\Config::get('seo.subpage_title') ?: '$SITE_TITLE - $SUBPAGE_TITLE'));
+		Context::set('seo_document_title', escape(Rhymix\Framework\Config::get('seo.document_title') ?: '$SITE_TITLE - $DOCUMENT_TITLE'));
+		
+		// OpenGraph metadata
+		Context::set('og_enabled', Rhymix\Framework\Config::get('seo.og_enabled'));
+		Context::set('og_extract_description', Rhymix\Framework\Config::get('seo.og_extract_description'));
+		Context::set('og_extract_images', Rhymix\Framework\Config::get('seo.og_extract_images'));
+		Context::set('og_use_timestamps', Rhymix\Framework\Config::get('seo.og_use_timestamps'));
+		
+		$this->setTemplateFile('config_seo');
 	}
 	
 	/**
@@ -472,24 +601,11 @@ class adminAdminView extends admin
 		Context::set('sitelock_message', escape(Rhymix\Framework\Config::get('lock.message')));
 		
 		$allowed_ip = Rhymix\Framework\Config::get('lock.allow') ?: array();
-		$allowed_localhost = false;
-		$allowed_current = false;
-		foreach ($allowed_ip as $range)
-		{
-			if (Rhymix\Framework\IpFilter::inRange('127.0.0.1', $range))
-			{
-				$allowed_localhost = true;
-			}
-			if (Rhymix\Framework\IpFilter::inRange(RX_CLIENT_IP, $range))
-			{
-				$allowed_current = true;
-			}
-		}
-		if (!$allowed_localhost)
+		if (!Rhymix\Framework\Filters\IpFilter::inRanges('127.0.0.1', $allowed_ip))
 		{
 			array_unshift($allowed_ip, '127.0.0.1');
 		}
-		if (!$allowed_current)
+		if (!Rhymix\Framework\Filters\IpFilter::inRanges(RX_CLIENT_IP, $allowed_ip))
 		{
 			array_unshift($allowed_ip, RX_CLIENT_IP);
 		}

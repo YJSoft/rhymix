@@ -224,6 +224,10 @@ class ExtraItem
 				{
 					$values = explode(',', $value);
 				}
+				else
+				{
+					$values = array($value);
+				}
 
 				$values = array_values($values);
 				for($i = 0, $c = count($values); $i < $c; $i++)
@@ -284,6 +288,7 @@ class ExtraItem
 			//case 'email_address' :
 			//case 'text' :
 			//case 'textarea' :
+			//case 'password' :
 			default :
 				return htmlspecialchars($value, ENT_COMPAT | ENT_HTML401, 'UTF-8', false);
 		}
@@ -342,6 +347,7 @@ class ExtraItem
 				return $value;
 
 			// case 'text' :
+			// case 'password' :
 			default :
 				return $value;
 		}
@@ -441,7 +447,7 @@ class ExtraItem
 
 				$buff[] = '<input type="hidden" name="' . $column_name . '" value="' . $value . '" />'; 
 				$buff[] =	'<input type="text" id="date_' . $column_name . '" value="' . zdate($value, 'Y-m-d') . '" class="date" />';
-				$buff[] =	'<input type="button" value="' . Context::getLang('cmd_delete') . '" class="btn" id="dateRemover_' . $column_name . '" />';
+				$buff[] =	'<input type="button" value="' . lang('cmd_delete') . '" class="btn" id="dateRemover_' . $column_name . '" />';
 				$buff[] =	'<script type="text/javascript">';
 				$buff[] = '//<![CDATA[';
 				$buff[] =	'(function($){';
@@ -466,6 +472,10 @@ class ExtraItem
 				{
 					$buff[] =  $oKrzipModel->getKrzipCodeSearchHtml($column_name, $value);
 				}
+				break;
+			// Password
+			case "password" :
+				$buff[] =' <input type="password" name="' . $column_name . '" value="' . ($value ? $value : $default) . '" class="password" />';
 				break;
 			// General text
 			default :
