@@ -1513,9 +1513,7 @@ class documentItem extends BaseObject
 	 */
 	function getDocumentMid()
 	{
-		$model = getModel('module');
-		$module = $model->getModuleInfoByModuleSrl($this->get('module_srl'));
-		return $module->mid;
+		return ModuleModel::getMidByModuleSrl($this->get('module_srl'));
 	}
 
 	/**
@@ -1524,9 +1522,7 @@ class documentItem extends BaseObject
 	 */
 	function getDocumentType()
 	{
-		$model = getModel('module');
-		$module = $model->getModuleInfoByModuleSrl($this->get('module_srl'));
-		return $module->module;
+		return ModuleModel::getModuleInfoByModuleSrl($this->get('module_srl'))->module;
 	}
 
 	/**
@@ -1545,9 +1541,7 @@ class documentItem extends BaseObject
 	 */
 	function getModuleName()
 	{
-		$model = getModel('module');
-		$module = $model->getModuleInfoByModuleSrl($this->get('module_srl'));
-		return $module->browser_title;
+		return ModuleModel::getModuleInfoByModuleSrl($this->get('module_srl'))->browser_title;
 	}
 
 	function getBrowserTitle()
