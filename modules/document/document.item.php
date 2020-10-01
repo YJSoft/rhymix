@@ -334,7 +334,7 @@ class documentItem extends BaseObject
 	
 	function isNotice()
 	{
-		return (bool) ($this->get('is_notice') == 'Y');
+		return (bool) ($this->get('is_notice') !== 'N');
 	}
 	
 	function useNotify()
