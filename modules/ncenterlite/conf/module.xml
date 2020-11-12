@@ -4,8 +4,8 @@
 	<actions>
 		<action name="dispNcenterliteNotifyList" type="view" permission="member" />
 		<action name="dispNcenterliteUserConfig" type="view" permission="member" />
-		<action name="dispNcenterliteUnsubscribeList" type="view" />
-		<action name="dispNcenterliteInsertUnsubscribe" type="view" />
+		<action name="dispNcenterliteUnsubscribeList" permission="member" type="view" />
+		<action name="dispNcenterliteInsertUnsubscribe" permission="member" type="view" />
 		
 		<action name="getColorsetList" type="model" permission="root" />
 		<action name="getMyNotifyListTpl" type="model" permission="member" />
