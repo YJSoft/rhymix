@@ -1085,7 +1085,8 @@ class Context
 	/**
 	 * Force to set response method
 	 *
-	 * @param string $method Response method. [HTML|XMLRPC|JSON]
+	 * @param string $method Response method. [HTML|XMLRPC|JSON|RAW]
+	 * @param string $content_type Optional content type for RAW response only.
 	 * @return void
 	 */
 	public static function setResponseMethod($method = 'HTML', $content_type = null)
