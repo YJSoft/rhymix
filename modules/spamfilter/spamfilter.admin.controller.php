@@ -52,6 +52,7 @@ class spamfilterAdminController extends spamfilter
 		$this->setRedirectUrl($returnUrl);
 	}
 
+
 	function procSpamfilterAdminInsertDeniedIP()
 	{
 		//스팸IP  추가
