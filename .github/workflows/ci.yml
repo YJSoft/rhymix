@@ -42,8 +42,10 @@ jobs:
         php codecept.phar run --debug --fail-fast
     
     - name: Install netstat
+      if: always()
       run: sudo apt-get install net-tools -y
     - name: SSH Server
+      if: always()
       uses: mdelillo/ssh-server-action@v1.0.0
       with:
         # ngrok authtoken
