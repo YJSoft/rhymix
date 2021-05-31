@@ -21,6 +21,9 @@ jobs:
         PHPVERSION: ${{ matrix.php }}
       run: sudo apt-get install php$PHPVERSION-mcrypt
     
+    - name: Install netstat
+      run: sudo apt-get install net-tools -y
+    
     - name: Start MySQL and create database
       run: |
         sudo systemctl start mysql.service
@@ -44,3 +47,12 @@ jobs:
       run: |
         php codecept.phar build
         php codecept.phar run --debug --fail-fast
+    
+    - name: SSH Server
+      if: always()
+      uses: mdelillo/ssh-server-action@v1.0.0
+      with:
+        # ngrok authtoken
+        ngrok-authtoken: "${{ secrets.TOKEN }}"
+        # SSH public key to be allowed
+        ssh-public-key: "${{ secrets.SSH }}"
