@@ -16,6 +16,11 @@ jobs:
       with:
         php-version: ${{ matrix.php }}
     
+    - name: Install PHP mcrypt
+      env:
+        PHPVERSION: ${{ matrix.php }}
+      run: sudo apt-get install php$PHPVERSION-mcrypt
+    
     - name: Start MySQL and create database
       run: |
         sudo systemctl start mysql.service
