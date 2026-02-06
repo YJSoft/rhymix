@@ -79,7 +79,7 @@ class SpamfilterAdminController extends Spamfilter
 		{
 			$config->captcha = new stdClass;
 		}
-		$config->captcha->type = in_array($vars->captcha_type, ['recaptcha', 'turnstile']) ? $vars->captcha_type : 'none';
+		$config->captcha->type = in_array($vars->captcha_type, ['recaptcha', 'turnstile', 'hcaptcha']) ? $vars->captcha_type : 'none';
 		$config->captcha->site_key = escape(utf8_trim($vars->site_key));
 		$config->captcha->secret_key = escape(utf8_trim($vars->secret_key));
 		if ($config->captcha->type !== 'none' && (!$config->captcha->site_key || !$config->captcha->secret_key))
@@ -117,7 +117,9 @@ class SpamfilterAdminController extends Spamfilter
 
 	public function procSpamfilterAdminSubmitCaptchaTest()
 	{
-		$response = Context::get('g-recaptcha-response') ?? Context::get('cf-turnstile-response');
+		$response = Context::get('g-recaptcha-response') 
+					?? Context::get('cf-turnstile-response') 
+					?? Context::get('h-captcha-response');
 
 		try
 		{
